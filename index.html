@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>WorkFlow - 個人用ワークマネージャー</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & Noto Sans JP -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'Noto Sans JP', 'sans-serif'],
+          },
+          colors: {
+            slate: {
+              850: '#162032',
+              900: '#0f172a',
+              950: '#080d1a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    /* カスタムスクロールバー＆モバイル最適化 */
+    body {
+      background-color: #080d1a;
+      color: #f8fafc;
+      -webkit-tap-highlight-color: transparent;
+      overscroll-behavior-y: none;
+    }
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    /* チェックボックスアニメーション */
+    .check-pop {
+      transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .check-pop:active {
+      transform: scale(0.85);
+    }
+    /* セーフエリア対応 */
+    .pb-safe {
+      padding-bottom: env(safe-area-inset-bottom, 16px);
+    }
+    /* カレンダーアイコンの色反転（ダークモード用） */
+    input[type="date"]::-webkit-calendar-picker-indicator {
+      filter: invert(1) opacity(0.7);
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex justify-center bg-[#080d1a] text-slate-100 antialiased selection:bg-sky-500/30 selection:text-sky-200">
+
+  <!-- アプリ全体コンテナ（スマホ幅最適化・PCでは中央に美しいフレーム表示） -->
+  <div class="w-full max-w-md min-h-screen bg-[#0f172a] sm:border-x sm:border-slate-800/80 flex flex-col relative shadow-2xl">
+
+    <!-- ヘッダー -->
+    <header class="sticky top-0 z-20 bg-[#0f172a]/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3.5 flex items-center justify-between">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-500 flex items-center justify-center shadow-lg shadow-sky-500/20">
+          <i data-lucide="briefcase" class="w-4 h-4 text-slate-950 stroke-[2.5]"></i>
+        </div>
+        <div>
+          <h1 id="header-title" class="text-base font-bold tracking-tight text-slate-100 leading-tight">ホーム</h1>
+          <p id="header-date" class="text-[11px] text-slate-400 font-medium"></p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button onclick="openDataModal()" class="p-2 rounded-xl bg-slate-800/70 hover:bg-slate-800 text-slate-300 transition" title="データ管理">
+          <i data-lucide="settings" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- メインコンテンツ領域 -->
+    <main id="main-content" class="flex-1 overflow-y-auto px-4 pt-4 pb-28 space-y-5 no-scrollbar">
+      <!-- JavaScriptでアクティブなタブの画面をレンダリング -->
+    </main>
+
+    <!-- 下部固定ナビゲーションバー（4タブ） -->
+    <nav class="fixed bottom-0 w-full max-w-md z-30 bg-[#162032]/95 backdrop-blur-lg border-t border-slate-800 pb-safe">
+      <div class="grid grid-cols-4 h-16">
+        <button onclick="switchTab('home')" id="nav-home" class="nav-btn flex flex-col items-center justify-center gap-1 text-sky-400 transition relative">
+          <div class="nav-indicator absolute top-0 w-8 h-0.5 bg-sky-400 rounded-full transition-all"></div>
+          <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+          <span class="text-[10px] font-semibold">ホーム</span>
+        </button>
+        <button onclick="switchTab('tasks')" id="nav-tasks" class="nav-btn flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-slate-200 transition relative">
+          <div class="nav-indicator absolute top-0 w-8 h-0.5 bg-transparent rounded-full transition-all"></div>
+          <i data-lucide="check-square" class="w-5 h-5"></i>
+          <span class="text-[10px] font-medium">タスク</span>
+        </button>
+        <button onclick="switchTab('leaves')" id="nav-leaves" class="nav-btn flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-slate-200 transition relative">
+          <div class="nav-indicator absolute top-0 w-8 h-0.5 bg-transparent rounded-full transition-all"></div>
+          <i data-lucide="calendar-heart" class="w-5 h-5"></i>
+          <span class="text-[10px] font-medium">休み管理</span>
+        </button>
+        <button onclick="switchTab('memos')" id="nav-memos" class="nav-btn flex flex-col items-center justify-center gap-1 text-slate-400 hover:text-slate-200 transition relative">
+          <div class="nav-indicator absolute top-0 w-8 h-0.5 bg-transparent rounded-full transition-all"></div>
+          <i data-lucide="sticky-note" class="w-5 h-5"></i>
+          <span class="text-[10px] font-medium">メモ</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- トースト通知 -->
+    <div id="toast-container" class="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-xs px-4"></div>
+
+    <!-- カスタム確認・入力モーダル -->
+    <div id="custom-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+      <div id="modal-box" class="bg-[#1e293b] border border-slate-700/80 rounded-2xl w-full max-w-sm p-5 shadow-2xl transform transition-all">
+        <!-- モーダル中身はJSで注入 -->
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // ==========================================
+    // 状態管理 & ローカルストレージ
+    // ==========================================
+    const STORAGE_KEY = 'workflow_personal_manager_v1';
+    let currentTab = 'home';
+    let currentTaskSubTab = 'spot'; // 'spot' | 'routine'
+    let currentMemoFilter = 'all';
+
+    // 日付ヘルパー（今日を基準としたYYYY-MM-DD文字列を取得）
+    function getOffsetDateStr(offsetDays = 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    // 初期サンプルデータ
+    function getInitialData() {
+      return {
+        spotTasks: [
+          {
+            id: 'sp_1',
+            title: '月次営業レポートの数字確認と提出',
+            dueDate: getOffsetDateStr(0),
+            priority: 'high',
+            completed: false,
+            createdAt: Date.now() - 3600000
+          },
+          {
+            id: 'sp_2',
+            title: '来週のクライアント定例アジェンダ作成',
+            dueDate: getOffsetDateStr(2),
+            priority: 'medium',
+            completed: false,
+            createdAt: Date.now() - 7200000
+          },
+          {
+            id: 'sp_3',
+            title: '経費精算の領収書アップロード',
+            dueDate: getOffsetDateStr(0),
+            priority: 'low',
+            completed: true,
+            createdAt: Date.now() - 86400000
+          }
+        ],
+        routineTasks: [
+          {
+            id: 'rt_1',
+            title: '朝一番のメール・チャット未読チェック',
+            frequency: '毎日',
+            completed: true
+          },
+          {
+            id: 'rt_2',
+            title: '今日のスケジュールと優先タスク確認',
+            frequency: '毎日',
+            completed: false
+          },
+          {
+            id: 'rt_3',
+            title: '週次進捗シートの更新',
+            frequency: '毎週金曜',
+            completed: false
+          },
+          {
+            id: 'rt_4',
+            title: '退勤前のデスク整理と明日の準備',
+            frequency: '毎日',
+            completed: false
+          }
+        ],
+        totalPaidLeaveDays: 20.0,
+        leaves: [
+          {
+            id: 'lv_1',
+            date: getOffsetDateStr(12),
+            type: '有給休暇',
+            days: 1.0,
+            status: 'planned',
+            memo: 'リフレッシュ・私用'
+          },
+          {
+            id: 'lv_2',
+            date: getOffsetDateStr(-15),
+            type: '半休（午後）',
+            days: 0.5,
+            status: 'taken',
+            memo: '歯医者・通院'
+          },
+          {
+            id: 'lv_3',
+            date: getOffsetDateStr(-32),
+            type: '有給休暇',
+            days: 1.0,
+            status: 'taken',
+            memo: '旅行'
+          }
+        ],
+        memos: [
+          {
+            id: 'mm_1',
+            content: '田中様よりお電話あり。来週火曜14時〜オンライン打ち合わせの候補日で調整中。折り返し連絡する。',
+            tag: '電話メモ',
+            pinned: true,
+            updatedAt: Date.now() - 1800000
+          },
+          {
+            id: 'mm_2',
+            content: '【社内メモ】経費精算の締め日は毎月25日17:00まで。交通費IC履歴の添付忘れ注意。',
+            tag: '引き継ぎ',
+            pinned: true,
+            updatedAt: Date.now() - 172800000
+          },
+          {
+            id: 'mm_3',
+            content: '新しいプレゼン資料のテンプレート、シンプルで使いやすい配色パターンをまとめる',
+            tag: 'アイデア',
+            pinned: false,
+            updatedAt: Date.now() - 43200000
+          }
+        ]
+      };
+    }
+
+    // データの読み込み・保存
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          const initial = getInitialData();
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(initial));
+          return initial;
+        }
+        return JSON.parse(raw);
+      } catch (e) {
+        console.error('Data load error:', e);
+        return getInitialData();
+      }
+    }
+
+    let appState = loadData();
+
+    function saveData() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      } catch (e) {
+        console.error('Data save error:', e);
+        showToast('データの保存に失敗しました', 'error');
+      }
+    }
+
+    // ==========================================
+    // ユーティリティ関数
+    // ==========================================
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function updateHeaderDate() {
+      const now = new Date();
+      const days = ['日', '月', '火', '水', '木', '金', '土'];
+      const dateStr = `${now.getFullYear()}年${now.getMonth() + 1}月${now.getDate()}日 (${days[now.getDay()]})`;
+      const el = document.getElementById('header-date');
+      if (el) el.textContent = dateStr;
+    }
+
+    function formatDisplayDate(dateStr) {
+      if (!dateStr) return '期限なし';
+      const today = getOffsetDateStr(0);
+      const tomorrow = getOffsetDateStr(1);
+      if (dateStr === today) return '今日';
+      if (dateStr === tomorrow) return '明日';
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return `${Number(parts[1])}/${Number(parts[2])}`;
+      }
+      return dateStr;
+    }
+
+    function getDaysUntil(dateStr) {
+      const today = new Date(getOffsetDateStr(0) + 'T00:00:00');
+      const target = new Date(dateStr + 'T00:00:00');
+      const diffTime = target - today;
+      return Math.round(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+      const toast = document.createElement('div');
+      const bgClass = type === 'error'
+        ? 'bg-rose-500/95 text-white border-rose-400'
+        : 'bg-slate-800/95 text-sky-300 border-sky-500/40';
+      const iconName = type === 'error' ? 'alert-circle' : 'check-circle-2';
+
+      toast.className = `${bgClass} border backdrop-blur-md px-3.5 py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-xs font-medium transition-all duration-300 transform translate-y-2 opacity-0`;
+      toast.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 shrink-0"></i><span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+      lucide.createIcons({ root: toast });
+
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-2', 'opacity-0');
+      });
+
+      setTimeout(() => {
+        toast.classList.add('-translate-y-2', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+      }, 2500);
+    }
+
+    function openModal(htmlContent) {
+      const modal = document.getElementById('custom-modal');
+      const box = document.getElementById('modal-box');
+      if (!modal || !box) return;
+      box.innerHTML = htmlContent;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons({ root: box });
+    }
+
+    function closeModal() {
+      const modal = document.getElementById('custom-modal');
+      if (!modal) return;
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    // モーダル背景タップで閉じる
+    document.getElementById('custom-modal').addEventListener('click', (e) => {
+      if (e.target.id === 'custom-modal') closeModal();
+    });
+
+    // ==========================================
+    // ナビゲーション制御
+    // ==========================================
+    function switchTab(tabName) {
+      currentTab = tabName;
+      const titles = {
+        home: 'ホーム',
+        tasks: 'タスク管理',
+        leaves: '休み・有給管理',
+        memos: 'クイックメモ'
+      };
+      const titleEl = document.getElementById('header-title');
+      if (titleEl) titleEl.textContent = titles[tabName] || 'ホーム';
+
+      document.querySelectorAll('.nav-btn').forEach(btn => {
+        const indicator = btn.querySelector('.nav-indicator');
+        btn.classList.remove('text-sky-400');
+        btn.classList.add('text-slate-400');
+        if (indicator) {
+          indicator.classList.remove('bg-sky-400');
+          indicator.classList.add('bg-transparent');
+        }
+      });
+
+      const activeBtn = document.getElementById(`nav-${tabName}`);
+      if (activeBtn) {
+        activeBtn.classList.remove('text-slate-400');
+        activeBtn.classList.add('text-sky-400');
+        const activeInd = activeBtn.querySelector('.nav-indicator');
+        if (activeInd) {
+          activeInd.classList.remove('bg-transparent');
+          activeInd.classList.add('bg-sky-400');
+        }
+      }
+
+      renderCurrentView();
+      const mainEl = document.getElementById('main-content');
+      if (mainEl) mainEl.scrollTop = 0;
+    }
+
+    function renderCurrentView() {
+      const main = document.getElementById('main-content');
+      if (!main) return;
+      if (currentTab === 'home') {
+        main.innerHTML = renderHomeView();
+      } else if (currentTab === 'tasks') {
+        main.innerHTML = renderTasksView();
+      } else if (currentTab === 'leaves') {
+        main.innerHTML = renderLeavesView();
+      } else if (currentTab === 'memos') {
+        main.innerHTML = renderMemosView();
+      }
+      lucide.createIcons({ root: main });
+    }
+
+    // ==========================================
+    // 1. ホーム画面レンダリング
+    // ==========================================
+    function renderHomeView() {
+      const todayStr = getOffsetDateStr(0);
+
+      // 今日の対象タスク（今日期限または期限切れの変動タスク + すべてのルーティン）
+      const activeSpotTasks = appState.spotTasks.filter(t => !t.completed || t.dueDate === todayStr);
+      const totalTodayCount = activeSpotTasks.length + appState.routineTasks.length;
+      const completedTodayCount =
+        activeSpotTasks.filter(t => t.completed).length +
+        appState.routineTasks.filter(t => t.completed).length;
+      const progressPct = totalTodayCount > 0 ? Math.round((completedTodayCount / totalTodayCount) * 100) : 0;
+
+      // 次の予定されている休み
+      const upcomingLeaves = appState.leaves
+        .filter(l => l.date >= todayStr)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const nextLeave = upcomingLeaves[0];
+
+      // 有給残数計算
+      const usedPaidDays = appState.leaves
+        .filter(l => l.type.includes('有給') || l.type.includes('半休'))
+        .reduce((sum, l) => sum + Number(l.days || 0), 0);
+      const remainingPaidDays = Math.max(0, (appState.totalPaidLeaveDays - usedPaidDays)).toFixed(1).replace(/\.0$/, '');
+
+      // 未完了の急ぎ・今日の変動タスク
+      const priorityOrder = { high: 1, medium: 2, low: 3 };
+      const urgentSpotTasks = appState.spotTasks
+        .filter(t => !t.completed)
+        .sort((a, b) => {
+          if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
+            return a.dueDate.localeCompare(b.dueDate);
+          }
+          return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+        })
+        .slice(0, 4);
+
+      const uncompletedRoutines = appState.routineTasks.filter(t => !t.completed);
+
+      return `
+        <!-- サマリーカードグリッド -->
+        <div class="grid grid-cols-2 gap-3">
+          <!-- 今日の進捗カード -->
+          <div class="bg-[#1e293b]/90 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-slate-400">今日の進捗</span>
+              <span class="p-1.5 rounded-lg bg-sky-500/10 text-sky-400">
+                <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+              </span>
+            </div>
+            <div>
+              <div class="flex items-baseline gap-1.5">
+                <span class="text-2xl font-bold text-slate-100">${progressPct}%</span>
+                <span class="text-xs text-slate-400">(${completedTodayCount}/${totalTodayCount})</span>
+              </div>
+              <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden mt-2">
+                <div class="h-full bg-gradient-to-r from-sky-400 to-indigo-400 rounded-full transition-all duration-500" style="width: ${progressPct}%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 次の休み＆有給残数カード -->
+          <div onclick="switchTab('leaves')" class="bg-[#1e293b]/90 border border-slate-800 hover:border-slate-700 rounded-2xl p-3.5 flex flex-col justify-between cursor-pointer transition shadow-sm">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-medium text-slate-400">次の休み</span>
+              <span class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400">
+                <i data-lucide="palmtree" class="w-3.5 h-3.5"></i>
+              </span>
+            </div>
+            <div>
+              ${nextLeave ? `
+                <div class="flex items-baseline gap-1">
+                  <span class="text-xl font-bold text-emerald-400">${getDaysUntil(nextLeave.date) === 0 ? '今日！' : `あと${getDaysUntil(nextLeave.date)}日`}</span>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-1 truncate">${formatDisplayDate(nextLeave.date)} (${escapeHtml(nextLeave.type)})</p>
+              ` : `
+                <p class="text-sm font-semibold text-slate-300">予定なし</p>
+                <p class="text-[11px] text-slate-400 mt-1">有給残り <span class="text-emerald-400 font-semibold">${remainingPaidDays}日</span></p>
+              `}
+            </div>
+          </div>
+        </div>
+
+        <!-- クイック入力バー（変動タスク＆メモへ即追加） -->
+        <div class="bg-[#1e293b]/70 border border-slate-800 rounded-2xl p-3">
+          <form onsubmit="handleQuickAddSpotTask(event)" class="flex items-center gap-2">
+            <input type="text" id="home-quick-task-input" placeholder="急な変動タスクをサッと追加..." 
+              class="flex-1 bg-slate-900/90 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-400 transition">
+            <button type="submit" class="bg-sky-400 hover:bg-sky-300 active:scale-95 text-slate-950 font-semibold p-2.5 rounded-xl transition shrink-0 shadow-md shadow-sky-500/20" title="今日期限で追加">
+              <i data-lucide="plus" class="w-5 h-5 stroke-[2.5]"></i>
+            </button>
+          </form>
+        </div>
+
+        <!-- 直近の変動タスク -->
+        <section class="space-y-2.5">
+          <div class="flex items-center justify-between px-0.5">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+              対応中の変動タスク
+            </h2>
+            <button onclick="switchTab('tasks'); switchTaskSubTab('spot');" class="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-0.5">
+              すべて見る <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+          ${urgentSpotTasks.length > 0 ? `
+            <div class="space-y-2">
+              ${urgentSpotTasks.map(task => renderSpotTaskItem(task)).join('')}
+            </div>
+          ` : `
+            <div class="bg-[#1e293b]/40 border border-slate-800/80 rounded-2xl p-5 text-center">
+              <p class="text-xs text-slate-400">未完了の変動タスクはありません 🎉</p>
+            </div>
+          `}
+        </section>
+
+        <!-- 今日のルーティン（未完了ピックアップ） -->
+        <section class="space-y-2.5">
+          <div class="flex items-center justify-between px-0.5">
+            <h2 class="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <i data-lucide="repeat" class="w-3.5 h-3.5 text-indigo-400"></i>
+              残りの決まっているタスク (${uncompletedRoutines.length}件)
+            </h2>
+            <button onclick="switchTab('tasks'); switchTaskSubTab('routine');" class="text-xs text-sky-400 hover:text-sky-300 font-medium flex items-center gap-0.5">
+              管理 <i data-lucide="chevron-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+          ${uncompletedRoutines.length > 0 ? `
+            <div class="space-y-2">
+              ${uncompletedRoutines.map(task => renderRoutineTaskItem(task)).join('')}
+            </div>
+          ` : `
+            <div class="bg-[#1e293b]/40 border border-slate-800/80 rounded-2xl p-5 text-center">
+              <p class="text-xs text-emerald-400 font-medium">今日のルーティンはすべて完了しました！ ✨</p>
+            </div>
+          `}
+        </section>
+      `;
+    }
+
+    // ==========================================
+    // 2. タスク管理画面レンダリング（変動 & ルーティン）
+    // ==========================================
+    function switchTaskSubTab(subTab) {
+      currentTaskSubTab = subTab;
+      renderCurrentView();
+    }
+
+    function renderTasksView() {
+      const isSpot = currentTaskSubTab === 'spot';
+      const spotCount = appState.spotTasks.filter(t => !t.completed).length;
+      const routineCount = appState.routineTasks.filter(t => !t.completed).length;
+
+      return `
+        <!-- セグメント切り替えタブ -->
+        <div class="bg-slate-900/90 p-1 rounded-2xl border border-slate-800 grid grid-cols-2 gap-1">
+          <button onclick="switchTaskSubTab('spot')" class="py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${isSpot ? 'bg-[#1e293b] text-sky-400 shadow-sm border border-slate-700/70' : 'text-slate-400 hover:text-slate-200'}">
+            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+            <span>変動タスク</span>
+            <span class="px-1.5 py-0.5 text-[10px] rounded-full ${isSpot ? 'bg-sky-500/20 text-sky-300' : 'bg-slate-800 text-slate-400'}">${spotCount}</span>
+          </button>
+          <button onclick="switchTaskSubTab('routine')" class="py-2.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${!isSpot ? 'bg-[#1e293b] text-indigo-400 shadow-sm border border-slate-700/70' : 'text-slate-400 hover:text-slate-200'}">
+            <i data-lucide="repeat" class="w-3.5 h-3.5"></i>
+            <span>決まっているタスク</span>
+            <span class="px-1.5 py-0.5 text-[10px] rounded-full ${!isSpot ? 'bg-indigo-500/20 text-indigo-300' : 'bg-slate-800 text-slate-400'}">${routineCount}</span>
+          </button>
+        </div>
+
+        ${isSpot ? renderSpotTasksTab() : renderRoutineTasksTab()}
+      `;
+    }
+
+    // 変動タスクタブ
+    function renderSpotTasksTab() {
+      const priorityOrder = { high: 1, medium: 2, low: 3 };
+      const uncompleted = appState.spotTasks
+        .filter(t => !t.completed)
+        .sort((a, b) => {
+          if (a.dueDate && b.dueDate && a.dueDate !== b.dueDate) {
+            return a.dueDate.localeCompare(b.dueDate);
+          }
+          return (priorityOrder[a.priority] || 2) - (priorityOrder[b.priority] || 2);
+        });
+      const completed = appState.spotTasks.filter(t => t.completed);
+
+      return `
+        <!-- 新規変動タスク追加フォーム -->
+        <form onsubmit="handleAddSpotTask(event)" class="bg-[#1e293b]/90 border border-slate-800 rounded-2xl p-3.5 space-y-3 shadow-sm">
+          <div>
+            <input type="text" id="spot-title" required placeholder="変動タスクの内容を入力..." 
+              class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-400 transition">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1 ml-1">期限日</label>
+              <input type="date" id="spot-due" value="${getOffsetDateStr(0)}"
+                class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-400">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1 ml-1">優先度</label>
+              <select id="spot-priority" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-400">
+                <option value="high">高（急ぎ・重要）</option>
+                <option value="medium" selected>中（通常）</option>
+                <option value="low">低（いつでも）</option>
+              </select>
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-sky-400 hover:bg-sky-300 active:scale-[0.99] text-slate-950 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-sky-500/15">
+            <i data-lucide="plus" class="w-4 h-4 stroke-[2.5]"></i>
+            <span>変動タスクを追加</span>
+          </button>
+        </form>
+
+        <!-- 未完了リスト -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-semibold text-slate-400 px-1">未完了 (${uncompleted.length}件)</h3>
+          ${uncompleted.length > 0 
+            ? uncompleted.map(t => renderSpotTaskItem(t)).join('') 
+            : `<div class="text-center py-6 text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800/60">未完了の変動タスクはありません</div>`
+          }
+        </div>
+
+        <!-- 完了済みリスト -->
+        ${completed.length > 0 ? `
+          <div class="space-y-2 pt-2">
+            <div class="flex items-center justify-between px-1">
+              <h3 class="text-xs font-semibold text-slate-500">完了済み (${completed.length}件)</h3>
+              <button onclick="clearCompletedSpotTasks()" class="text-[11px] text-rose-400 hover:text-rose-300 transition">完了済みを一括削除</button>
+            </div>
+            <div class="space-y-2 opacity-75">
+              ${completed.map(t => renderSpotTaskItem(t)).join('')}
+            </div>
+          </div>
+        ` : ''}
+      `;
+    }
+
+    function renderSpotTaskItem(task) {
+      const priorityBadge = {
+        high: '<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/20">高</span>',
+        medium: '<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/20">中</span>',
+        low: '<span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-700/70 text-slate-300">低</span>'
+      }[task.priority || 'medium'];
+
+      const isOverdue = !task.completed && task.dueDate && task.dueDate < getOffsetDateStr(0);
+      const dueClass = isOverdue ? 'text-rose-400 font-semibold' : 'text-slate-400';
+
+      return `
+        <div class="bg-[#1e293b]/80 border ${task.completed ? 'border-slate-800/60' : 'border-slate-700/70'} rounded-2xl p-3 flex items-start gap-3 transition">
+          <button onclick="toggleSpotTask('${task.id}')" class="check-pop mt-0.5 w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition ${task.completed ? 'bg-sky-400 border-sky-400 text-slate-950' : 'border-slate-600 hover:border-sky-400'}">
+            ${task.completed ? '<i data-lucide="check" class="w-4 h-4 stroke-[3]"></i>' : ''}
+          </button>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm leading-snug break-words ${task.completed ? 'line-through text-slate-500' : 'text-slate-100 font-medium'}">${escapeHtml(task.title)}</p>
+            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+              ${priorityBadge}
+              <span class="text-[11px] flex items-center gap-1 ${dueClass}">
+                <i data-lucide="calendar" class="w-3 h-3"></i>
+                ${formatDisplayDate(task.dueDate)}${isOverdue ? ' (期限超過)' : ''}
+              </span>
+            </div>
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            <button onclick="openEditSpotTaskModal('${task.id}')" class="p-1.5 text-slate-400 hover:text-sky-400 rounded-lg hover:bg-slate-800 transition" title="編集">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+            </button>
+            <button onclick="deleteSpotTask('${task.id}')" class="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition" title="削除">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // 決まっているタスク（ルーティン）タブ
+    function renderRoutineTasksTab() {
+      const completedCount = appState.routineTasks.filter(t => t.completed).length;
+
+      return `
+        <!-- ルーティン追加フォーム -->
+        <form onsubmit="handleAddRoutineTask(event)" class="bg-[#1e293b]/90 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-sm">
+          <div class="flex gap-2">
+            <input type="text" id="routine-title" required placeholder="決まっている業務を追加..." 
+              class="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-400 transition">
+            <select id="routine-freq" class="bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-400">
+              <option value="毎日">毎日</option>
+              <option value="毎週月曜">毎週月曜</option>
+              <option value="毎週金曜">毎週金曜</option>
+              <option value="月末">月末</option>
+            </select>
+          </div>
+          <button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-400 active:scale-[0.99] text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-500/15">
+            <i data-lucide="plus" class="w-4 h-4 stroke-[2.5]"></i>
+            <span>ルーティンを追加</span>
+          </button>
+        </form>
+
+        <!-- 一括リセットバー -->
+        <div class="flex items-center justify-between bg-slate-900/80 border border-slate-800 rounded-xl px-3.5 py-2.5">
+          <span class="text-xs text-slate-400">完了状況: <strong class="text-slate-200">${completedCount} / ${appState.routineTasks.length}</strong></span>
+          <button onclick="resetAllRoutineTasks()" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 bg-indigo-500/10 px-2.5 py-1.5 rounded-lg border border-indigo-500/20 transition">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+            <span>チェックをすべて戻す</span>
+          </button>
+        </div>
+
+        <!-- ルーティン一覧 -->
+        <div class="space-y-2">
+          ${appState.routineTasks.length > 0 
+            ? appState.routineTasks.map(t => renderRoutineTaskItem(t, true)).join('')
+            : `<div class="text-center py-6 text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800/60">登録されているルーティンはありません</div>`
+          }
+        </div>
+      `;
+    }
+
+    function renderRoutineTaskItem(task, showDelete = false) {
+      return `
+        <div class="bg-[#1e293b]/80 border ${task.completed ? 'border-slate-800/60 opacity-75' : 'border-slate-700/70'} rounded-2xl p-3 flex items-center gap-3 transition">
+          <button onclick="toggleRoutineTask('${task.id}')" class="check-pop w-6 h-6 rounded-lg border-2 flex items-center justify-center shrink-0 transition ${task.completed ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-slate-600 hover:border-indigo-400'}">
+            ${task.completed ? '<i data-lucide="check" class="w-4 h-4 stroke-[3]"></i>' : ''}
+          </button>
+          <div class="flex-1 min-w-0">
+            <p class="text-sm break-words ${task.completed ? 'line-through text-slate-500' : 'text-slate-100 font-medium'}">${escapeHtml(task.title)}</p>
+          </div>
+          <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/20 shrink-0">${escapeHtml(task.frequency)}</span>
+          ${showDelete ? `
+            <button onclick="deleteRoutineTask('${task.id}')" class="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition shrink-0" title="削除">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          ` : ''}
+        </div>
+      `;
+    }
+
+    // ==========================================
+    // 3. 休み管理画面レンダリング
+    // ==========================================
+    function renderLeavesView() {
+      const todayStr = getOffsetDateStr(0);
+      const usedPaidDays = appState.leaves
+        .filter(l => l.type.includes('有給') || l.type.includes('半休'))
+        .reduce((sum, l) => sum + Number(l.days || 0), 0);
+      const remainingPaidDays = Math.max(0, (appState.totalPaidLeaveDays - usedPaidDays)).toFixed(1).replace(/\.0$/, '');
+      const usedFormatted = usedPaidDays.toFixed(1).replace(/\.0$/, '');
+
+      const sortedLeaves = [...appState.leaves].sort((a, b) => b.date.localeCompare(a.date));
+
+      return `
+        <!-- 有給残日数ダッシュボード -->
+        <div class="bg-gradient-to-br from-[#1e293b] to-slate-900 border border-slate-700/80 rounded-2xl p-4 shadow-lg relative overflow-hidden">
+          <div class="flex items-start justify-between">
+            <div>
+              <p class="text-xs font-medium text-slate-400">有給休暇 残り日数</p>
+              <div class="flex items-baseline gap-1.5 mt-1">
+                <span class="text-3xl font-bold text-emerald-400 tracking-tight">${remainingPaidDays}</span>
+                <span class="text-sm font-medium text-slate-300">日</span>
+                <span class="text-xs text-slate-500 ml-1">/ 年間付与 ${appState.totalPaidLeaveDays}日</span>
+              </div>
+            </div>
+            <button onclick="openEditTotalLeaveModal()" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 border border-slate-700 flex items-center gap-1 transition">
+              <i data-lucide="sliders-horizontal" class="w-3 h-3"></i>
+              <span>付与日数設定</span>
+            </button>
+          </div>
+          <div class="mt-3 pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+            <span>消化・予定合計: <strong class="text-slate-200">${usedFormatted}日</strong></span>
+            <span>※半休は0.5日として自動計算</span>
+          </div>
+        </div>
+
+        <!-- 休み登録フォーム -->
+        <form onsubmit="handleAddLeave(event)" class="bg-[#1e293b]/90 border border-slate-800 rounded-2xl p-3.5 space-y-3 shadow-sm">
+          <h3 class="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+            <i data-lucide="calendar-plus" class="w-3.5 h-3.5 text-emerald-400"></i>
+            <span>休みの予定・実績を登録</span>
+          </h3>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1 ml-1">日付</label>
+              <input type="date" id="leave-date" required value="${getOffsetDateStr(7)}"
+                class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1 ml-1">休みの種類</label>
+              <select id="leave-type" class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-400">
+                <option value="有給休暇|1.0">有給休暇 (1.0日)</option>
+                <option value="半休（午前）|0.5">半休・午前 (0.5日)</option>
+                <option value="半休（午後）|0.5">半休・午後 (0.5日)</option>
+                <option value="代休・振休|0">代休・振休 (有給消費なし)</option>
+                <option value="特別休暇|0">特別・夏季休暇 (消費なし)</option>
+              </select>
+            </div>
+          </div>
+          <div>
+            <input type="text" id="leave-memo" placeholder="一言メモ（例：通院、リフレッシュ、旅行など）" 
+              class="w-full bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-400">
+          </div>
+          <button type="submit" class="w-full bg-emerald-400 hover:bg-emerald-300 active:scale-[0.99] text-slate-950 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-emerald-500/15">
+            <i data-lucide="plus" class="w-4 h-4 stroke-[2.5]"></i>
+            <span>休みを記録する</span>
+          </button>
+        </form>
+
+        <!-- 休み履歴・予定一覧 -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-semibold text-slate-400 px-1">登録済みの休み一覧 (${sortedLeaves.length}件)</h3>
+          ${sortedLeaves.length > 0 ? sortedLeaves.map(leave => {
+            const isFuture = leave.date >= todayStr;
+            return `
+              <div class="bg-[#1e293b]/80 border border-slate-700/70 rounded-2xl p-3 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  <div class="w-11 h-11 rounded-xl ${isFuture ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'} flex flex-col items-center justify-center shrink-0">
+                    <span class="text-[10px] font-bold leading-none">${leave.date.split('-')[1]}月</span>
+                    <span class="text-base font-bold leading-tight">${Number(leave.date.split('-')[2])}</span>
+                  </div>
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span class="text-sm font-bold text-slate-100">${escapeHtml(leave.type)}</span>
+                      <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold ${isFuture ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-700 text-slate-400'}">
+                        ${isFuture ? '取得予定' : '取得済み'}
+                      </span>
+                    </div>
+                    <p class="text-xs text-slate-400 truncate mt-0.5">${leave.memo ? escapeHtml(leave.memo) : 'メモなし'}</p>
+                  </div>
+                </div>
+                <button onclick="deleteLeave('${leave.id}')" class="p-2 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition shrink-0" title="削除">
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
+            `;
+          }).join('') : `
+            <div class="text-center py-6 text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800/60">登録されている休みはありません</div>
+          `}
+        </div>
+      `;
+    }
+
+    // ==========================================
+    // 4. メモ画面レンダリング（タスク変換付き）
+    // ==========================================
+    function setMemoFilter(tag) {
+      currentMemoFilter = tag;
+      renderCurrentView();
+    }
+
+    function renderMemosView() {
+      const tags = ['all', '電話メモ', 'アイデア', '引き継ぎ', 'その他'];
+      const filteredMemos = appState.memos
+        .filter(m => currentMemoFilter === 'all' || m.tag === currentMemoFilter)
+        .sort((a, b) => {
+          if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+          return b.updatedAt - a.updatedAt;
+        });
+
+      return `
+        <!-- クイックメモ入力フォーム -->
+        <form onsubmit="handleAddMemo(event)" class="bg-[#1e293b]/90 border border-slate-800 rounded-2xl p-3.5 space-y-2.5 shadow-sm">
+          <textarea id="memo-content" rows="3" required placeholder="電話の伝言、思いついたアイデア、備忘録をサッとメモ..." 
+            class="w-full bg-slate-900 border border-slate-700/80 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-sky-400 transition resize-none"></textarea>
+          <div class="flex items-center justify-between gap-2">
+            <select id="memo-tag" class="bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-400">
+              <option value="電話メモ">📞 電話メモ</option>
+              <option value="アイデア">💡 アイデア</option>
+              <option value="引き継ぎ">📋 引き継ぎ</option>
+              <option value="その他">📝 その他</option>
+            </select>
+            <button type="submit" class="bg-sky-400 hover:bg-sky-300 active:scale-95 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-md shadow-sky-500/15">
+              <i data-lucide="send" class="w-3.5 h-3.5"></i>
+              <span>メモを保存</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- タグフィルターチップ -->
+        <div class="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+          ${tags.map(t => {
+            const active = currentMemoFilter === t;
+            const label = t === 'all' ? 'すべて' : t;
+            return `
+              <button onclick="setMemoFilter('${t}')" class="px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition ${active ? 'bg-sky-400 text-slate-950 font-bold' : 'bg-slate-800/80 text-slate-400 hover:text-slate-200'}">
+                ${label}
+              </button>
+            `;
+          }).join('')}
+        </div>
+
+        <!-- メモ一覧 -->
+        <div class="space-y-2.5">
+          ${filteredMemos.length > 0 ? filteredMemos.map(memo => `
+            <div class="bg-[#1e293b]/85 border ${memo.pinned ? 'border-amber-500/40' : 'border-slate-700/70'} rounded-2xl p-3.5 space-y-2.5 transition">
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-800 text-sky-300 border border-slate-700">${escapeHtml(memo.tag)}</span>
+                  ${memo.pinned ? '<span class="text-[10px] text-amber-400 font-semibold flex items-center gap-0.5"><i data-lucide="pin" class="w-3 h-3"></i>固定中</span>' : ''}
+                </div>
+                <div class="flex items-center gap-1">
+                  <button onclick="togglePinMemo('${memo.id}')" class="p-1.5 rounded-lg hover:bg-slate-800 transition ${memo.pinned ? 'text-amber-400' : 'text-slate-400 hover:text-amber-300'}" title="ピン留め">
+                    <i data-lucide="pin" class="w-3.5 h-3.5"></i>
+                  </button>
+                  <button onclick="deleteMemo('${memo.id}')" class="p-1.5 text-slate-400 hover:text-rose-400 rounded-lg hover:bg-slate-800 transition" title="削除">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </div>
+              <p class="text-sm text-slate-100 whitespace-pre-wrap leading-relaxed break-words">${escapeHtml(memo.content)}</p>
+              <div class="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+                <span class="text-[10px] text-slate-500">${new Date(memo.updatedAt).toLocaleDateString('ja-JP')}</span>
+                <button onclick="convertMemoToTask('${memo.id}')" class="text-xs font-semibold text-sky-400 hover:text-sky-300 bg-sky-500/10 hover:bg-sky-500/20 px-2.5 py-1.5 rounded-lg border border-sky-500/20 flex items-center gap-1 transition">
+                  <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i>
+                  <span>変動タスクへ変換</span>
+                </button>
+              </div>
+            </div>
+          `).join('') : `
+            <div class="text-center py-8 text-xs text-slate-500 bg-slate-900/40 rounded-2xl border border-slate-800/60">該当するメモはありません</div>
+          `}
+        </div>
+      `;
+    }
+
+    // ==========================================
+    // アクションハンドラ（CRUD操作）
+    // ==========================================
+    // ホームからのクイック追加
+    function handleQuickAddSpotTask(e) {
+      e.preventDefault();
+      const input = document.getElementById('home-quick-task-input');
+      const title = input.value.trim();
+      if (!title) return;
+
+      appState.spotTasks.unshift({
+        id: 'sp_' + Date.now(),
+        title,
+        dueDate: getOffsetDateStr(0),
+        priority: 'medium',
+        completed: false,
+        createdAt: Date.now()
+      });
+      saveData();
+      input.value = '';
+      showToast('今日期限の変動タスクに追加しました');
+      renderCurrentView();
+    }
+
+    // タスク画面からの変動タスク追加
+    function handleAddSpotTask(e) {
+      e.preventDefault();
+      const title = document.getElementById('spot-title').value.trim();
+      const dueDate = document.getElementById('spot-due').value;
+      const priority = document.getElementById('spot-priority').value;
+      if (!title) return;
+
+      appState.spotTasks.unshift({
+        id: 'sp_' + Date.now(),
+        title,
+        dueDate,
+        priority,
+        completed: false,
+        createdAt: Date.now()
+      });
+      saveData();
+      showToast('変動タスクを追加しました');
+      renderCurrentView();
+    }
+
+    function toggleSpotTask(id) {
+      const task = appState.spotTasks.find(t => t.id === id);
+      if (task) {
+        task.completed = !task.completed;
+        saveData();
+        renderCurrentView();
+      }
+    }
+
+    function deleteSpotTask(id) {
+      appState.spotTasks = appState.spotTasks.filter(t => t.id !== id);
+      saveData();
+      showToast('タスクを削除しました');
+      renderCurrentView();
+    }
+
+    function clearCompletedSpotTasks() {
+      appState.spotTasks = appState.spotTasks.filter(t => !t.completed);
+      saveData();
+      showToast('完了済みタスクを削除しました');
+      renderCurrentView();
+    }
+
+    function openEditSpotTaskModal(id) {
+      const task = appState.spotTasks.find(t => t.id === id);
+      if (!task) return;
+      openModal(`
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-100">変動タスクの編集</h3>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-200 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+          <form onsubmit="saveEditedSpotTask(event, '${task.id}')" class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">タスク名</label>
+              <input type="text" id="edit-spot-title" value="${escapeHtml(task.title)}" required
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-100 focus:outline-none focus:border-sky-400">
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">期限日</label>
+                <input type="date" id="edit-spot-due" value="${task.dueDate || ''}"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-400">
+              </div>
+              <div>
+                <label class="block text-xs text-slate-400 mb-1">優先度</label>
+                <select id="edit-spot-priority" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-sky-400">
+                  <option value="high" ${task.priority === 'high' ? 'selected' : ''}>高</option>
+                  <option value="medium" ${task.priority === 'medium' ? 'selected' : ''}>中</option>
+                  <option value="low" ${task.priority === 'low' ? 'selected' : ''}>低</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2">
+              <button type="button" onclick="closeModal()" class="py-2.5 rounded-xl text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700">キャンセル</button>
+              <button type="submit" class="py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-sky-400 hover:bg-sky-300">保存する</button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function saveEditedSpotTask(e, id) {
+      e.preventDefault();
+      const task = appState.spotTasks.find(t => t.id === id);
+      if (task) {
+        task.title = document.getElementById('edit-spot-title').value.trim();
+        task.dueDate = document.getElementById('edit-spot-due').value;
+        task.priority = document.getElementById('edit-spot-priority').value;
+        saveData();
+        closeModal();
+        showToast('タスクを更新しました');
+        renderCurrentView();
+      }
+    }
+
+    // ルーティン操作
+    function handleAddRoutineTask(e) {
+      e.preventDefault();
+      const title = document.getElementById('routine-title').value.trim();
+      const frequency = document.getElementById('routine-freq').value;
+      if (!title) return;
+
+      appState.routineTasks.push({
+        id: 'rt_' + Date.now(),
+        title,
+        frequency,
+        completed: false
+      });
+      saveData();
+      showToast('決まっているタスクを追加しました');
+      renderCurrentView();
+    }
+
+    function toggleRoutineTask(id) {
+      const task = appState.routineTasks.find(t => t.id === id);
+      if (task) {
+        task.completed = !task.completed;
+        saveData();
+        renderCurrentView();
+      }
+    }
+
+    function deleteRoutineTask(id) {
+      appState.routineTasks = appState.routineTasks.filter(t => t.id !== id);
+      saveData();
+      showToast('ルーティンを削除しました');
+      renderCurrentView();
+    }
+
+    function resetAllRoutineTasks() {
+      appState.routineTasks.forEach(t => t.completed = false);
+      saveData();
+      showToast('ルーティンのチェックをすべてリセットしました');
+      renderCurrentView();
+    }
+
+    // 休み管理操作
+    function handleAddLeave(e) {
+      e.preventDefault();
+      const date = document.getElementById('leave-date').value;
+      const typeRaw = document.getElementById('leave-type').value;
+      const memo = document.getElementById('leave-memo').value.trim();
+      if (!date) return;
+
+      const [type, daysStr] = typeRaw.split('|');
+      appState.leaves.push({
+        id: 'lv_' + Date.now(),
+        date,
+        type,
+        days: parseFloat(daysStr) || 0,
+        status: date >= getOffsetDateStr(0) ? 'planned' : 'taken',
+        memo
+      });
+      saveData();
+      showToast('休みを登録しました');
+      renderCurrentView();
+    }
+
+    function deleteLeave(id) {
+      appState.leaves = appState.leaves.filter(l => l.id !== id);
+      saveData();
+      showToast('休みの記録を削除しました');
+      renderCurrentView();
+    }
+
+    function openEditTotalLeaveModal() {
+      openModal(`
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-100">年間有給付与日数の設定</h3>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-200 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+          <form onsubmit="saveTotalLeaveDays(event)" class="space-y-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">今年の付与日数（0.5日単位）</label>
+              <input type="number" step="0.5" min="0" max="60" id="total-leave-input" value="${appState.totalPaidLeaveDays}" required
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2.5 text-base font-bold text-emerald-400 focus:outline-none focus:border-emerald-400">
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2">
+              <button type="button" onclick="closeModal()" class="py-2.5 rounded-xl text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700">キャンセル</button>
+              <button type="submit" class="py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300">更新する</button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function saveTotalLeaveDays(e) {
+      e.preventDefault();
+      const val = parseFloat(document.getElementById('total-leave-input').value);
+      if (!isNaN(val) && val >= 0) {
+        appState.totalPaidLeaveDays = val;
+        saveData();
+        closeModal();
+        showToast('有給付与日数を更新しました');
+        renderCurrentView();
+      }
+    }
+
+    // メモ操作＆タスク変換
+    function handleAddMemo(e) {
+      e.preventDefault();
+      const content = document.getElementById('memo-content').value.trim();
+      const tag = document.getElementById('memo-tag').value;
+      if (!content) return;
+
+      appState.memos.unshift({
+        id: 'mm_' + Date.now(),
+        content,
+        tag,
+        pinned: false,
+        updatedAt: Date.now()
+      });
+      saveData();
+      showToast('メモを保存しました');
+      renderCurrentView();
+    }
+
+    function togglePinMemo(id) {
+      const memo = appState.memos.find(m => m.id === id);
+      if (memo) {
+        memo.pinned = !memo.pinned;
+        saveData();
+        renderCurrentView();
+      }
+    }
+
+    function deleteMemo(id) {
+      appState.memos = appState.memos.filter(m => m.id !== id);
+      saveData();
+      showToast('メモを削除しました');
+      renderCurrentView();
+    }
+
+    function convertMemoToTask(id) {
+      const memo = appState.memos.find(m => m.id === id);
+      if (!memo) return;
+
+      openModal(`
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="text-base font-bold text-slate-100">メモを変動タスクへ変換</h3>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-200 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+          <p class="text-xs text-slate-400">以下の内容で変動タスクを作成します。元のメモを残すか削除するかも選べます。</p>
+          <div class="bg-slate-900/90 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 max-h-24 overflow-y-auto">
+            ${escapeHtml(memo.content)}
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1">期限日</label>
+              <input type="date" id="conv-due" value="${getOffsetDateStr(0)}"
+                class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200">
+            </div>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1">優先度</label>
+              <select id="conv-priority" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-2.5 py-2 text-xs text-slate-200">
+                <option value="high">高</option>
+                <option value="medium" selected>中</option>
+                <option value="low">低</option>
+              </select>
+            </div>
+          </div>
+          <div class="space-y-2 pt-1">
+            <button onclick="executeConvertMemo('${memo.id}', true)" class="w-full py-2.5 rounded-xl text-xs font-bold text-slate-950 bg-sky-400 hover:bg-sky-300 transition">
+              タスクへ移動（元のメモは削除）
+            </button>
+            <button onclick="executeConvertMemo('${memo.id}', false)" class="w-full py-2.5 rounded-xl text-xs font-semibold text-sky-300 bg-sky-500/15 hover:bg-sky-500/25 border border-sky-500/30 transition">
+              タスクへコピー（元のメモも残す）
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    function executeConvertMemo(id, removeOriginal) {
+      const memo = appState.memos.find(m => m.id === id);
+      if (!memo) return;
+
+      const dueDate = document.getElementById('conv-due').value;
+      const priority = document.getElementById('conv-priority').value;
+
+      appState.spotTasks.unshift({
+        id: 'sp_' + Date.now(),
+        title: memo.content,
+        dueDate,
+        priority,
+        completed: false,
+        createdAt: Date.now()
+      });
+
+      if (removeOriginal) {
+        appState.memos = appState.memos.filter(m => m.id !== id);
+      }
+
+      saveData();
+      closeModal();
+      showToast(removeOriginal ? '変動タスクへ移動しました' : '変動タスクへコピーしました');
+      renderCurrentView();
+    }
+
+    // ==========================================
+    // 設定・データ管理モーダル（バックアップ＆復元）
+    // ==========================================
+    let pendingRestoreData = null;
+
+    function openDataModal() {
+      pendingRestoreData = null;
+      openModal(`
+        <div class="space-y-4 max-h-[82vh] overflow-y-auto no-scrollbar pr-0.5">
+          <div class="flex items-center justify-between sticky top-0 bg-[#1e293b] pb-2 border-b border-slate-700/70 z-10">
+            <div class="flex items-center gap-2">
+              <i data-lucide="database" class="w-4 h-4 text-sky-400"></i>
+              <h3 class="text-base font-bold text-slate-100">バックアップ・データ管理</h3>
+            </div>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-200 p-1.5 rounded-lg hover:bg-slate-800 transition">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+
+          <p class="text-[11px] text-slate-400 leading-relaxed">
+            データはブラウザ内に自動保存されます。機種変更やアプリ更新時の引き継ぎ用に、バックアップの保存・復元ができます。
+          </p>
+
+          <!-- 1. データの書き出し（バックアップ） -->
+          <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3.5 space-y-2.5">
+            <div class="flex items-center gap-1.5 text-xs font-bold text-sky-400">
+              <i data-lucide="download" class="w-3.5 h-3.5"></i>
+              <span>データの書き出し（バックアップ）</span>
+            </div>
+            <div class="grid grid-cols-1 gap-2">
+              <button onclick="exportBackupFile()" class="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-bold text-slate-950 bg-sky-400 hover:bg-sky-300 active:scale-[0.99] flex items-center justify-center gap-1.5 transition shadow-md shadow-sky-500/15">
+                <i data-lucide="file-down" class="w-4 h-4"></i> JSONファイルとして保存
+              </button>
+              <button onclick="copyBackupToClipboard()" class="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                <i data-lucide="copy" class="w-3.5 h-3.5 text-sky-400"></i> バックアップ文字をコピー（スマホ向け）
+              </button>
+            </div>
+          </div>
+
+          <!-- 2. データの読み込み（復元） -->
+          <div class="bg-slate-900/70 border border-slate-700/70 rounded-xl p-3.5 space-y-3">
+            <div class="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+              <i data-lucide="upload" class="w-3.5 h-3.5"></i>
+              <span>データの読み込み（復元）</span>
+            </div>
+
+            <!-- ファイル選択ボタン -->
+            <div>
+              <label class="w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-semibold text-emerald-300 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center gap-1.5 cursor-pointer transition">
+                <i data-lucide="folder-open" class="w-4 h-4"></i>
+                <span>JSONファイルを選択して読み込む</span>
+                <input type="file" accept=".json,application/json" onchange="handleBackupFileSelect(event)" class="hidden">
+              </label>
+            </div>
+
+            <!-- テキスト貼り付け復元 -->
+            <div class="space-y-1.5 pt-1 border-t border-slate-800">
+              <label class="block text-[10px] text-slate-400">または、コピーしたバックアップ文字を貼り付け：</label>
+              <textarea id="restore-json-textarea" rows="2" placeholder='{"appName":"WorkFlow", ...}'
+                class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-[11px] font-mono text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-400 resize-none"></textarea>
+              <button onclick="handleBackupTextRestore()" class="w-full min-h-[40px] py-2 px-3 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                <i data-lucide="clipboard-check" class="w-3.5 h-3.5 text-emerald-400"></i> 貼り付けた内容を確認する
+              </button>
+            </div>
+
+            <!-- 復元プレビュー＆最終確認エリア -->
+            <div id="restore-preview-area" class="hidden bg-amber-500/10 border border-amber-500/40 rounded-xl p-3 space-y-2.5">
+              <!-- JSでプレビュー内容を挿入 -->
+            </div>
+          </div>
+
+          <!-- 3. データ初期化（安全配置） -->
+          <div class="pt-2 border-t border-slate-700/70">
+            <button onclick="confirmResetToSampleData()" class="w-full py-2 px-3 rounded-xl text-[11px] font-medium text-rose-400/90 hover:text-rose-300 hover:bg-rose-500/10 flex items-center justify-center gap-1.5 transition">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i> 初期サンプルデータにリセット
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    // バックアップ用ペイロード生成
+    function createBackupPayload() {
+      return {
+        appName: 'WorkFlow',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: {
+          spotTasks: appState.spotTasks || [],
+          routineTasks: appState.routineTasks || [],
+          totalPaidLeaveDays: typeof appState.totalPaidLeaveDays === 'number' ? appState.totalPaidLeaveDays : 20.0,
+          leaves: appState.leaves || [],
+          memos: appState.memos || []
+        }
+      };
+    }
+
+    // JSONファイルダウンロード
+    function exportBackupFile() {
+      try {
+        const payload = createBackupPayload();
+        const jsonStr = JSON.stringify(payload, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `work_manager_backup_${getOffsetDateStr(0)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showToast('バックアップファイルを書き出しました');
+      } catch (e) {
+        console.error('Export error:', e);
+        showToast('ファイルの書き出しに失敗しました', 'error');
+      }
+    }
+
+    // クリップボードへJSONコピー（iFrame・スマホ対応フォールバック付き）
+    function copyBackupToClipboard() {
+      try {
+        const payload = createBackupPayload();
+        const jsonStr = JSON.stringify(payload);
+
+        const textarea = document.createElement('textarea');
+        textarea.value = jsonStr;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        const success = document.execCommand('copy');
+        document.body.removeChild(textarea);
+
+        if (success) {
+          showToast('バックアップデータをコピーしました');
+        } else {
+          showToast('コピーに失敗しました。ファイル保存をお試しください', 'error');
+        }
+      } catch (e) {
+        console.error('Copy error:', e);
+        showToast('コピー処理中にエラーが発生しました', 'error');
+      }
+    }
+
+    // バックアップデータの検証・パース
+    function parseAndValidateBackup(rawText) {
+      let parsed;
+      try {
+        parsed = JSON.parse(rawText);
+      } catch (e) {
+        throw new Error('JSONの形式が正しくありません。ファイルや文字が途中で切れていないか確認してください。');
+      }
+
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('有効なバックアップデータではありません。');
+      }
+
+      // v1形式（dataプロパティあり）または直接state形式の両方を許容して検証
+      const targetData = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
+
+      if (
+        !Array.isArray(targetData.spotTasks) ||
+        !Array.isArray(targetData.routineTasks) ||
+        !Array.isArray(targetData.leaves) ||
+        !Array.isArray(targetData.memos)
+      ) {
+        throw new Error('このアプリのバックアップデータではないか、必要な項目が不足しています。');
+      }
+
+      return {
+        exportedAt: parsed.exportedAt || null,
+        data: {
+          spotTasks: targetData.spotTasks,
+          routineTasks: targetData.routineTasks,
+          totalPaidLeaveDays: typeof targetData.totalPaidLeaveDays === 'number' ? targetData.totalPaidLeaveDays : 20.0,
+          leaves: targetData.leaves,
+          memos: targetData.memos
+        }
+      };
+    }
+
+    // ファイル選択時のハンドラ
+    function handleBackupFileSelect(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        prepareRestorePreview(e.target.result);
+      };
+      reader.onerror = function() {
+        showToast('ファイルの読み込みに失敗しました', 'error');
+      };
+      reader.readAsText(file, 'UTF-8');
+      event.target.value = ''; // 同じファイルを再選択できるようにリセット
+    }
+
+    // テキスト貼り付け時のハンドラ
+    function handleBackupTextRestore() {
+      const text = document.getElementById('restore-json-textarea').value.trim();
+      if (!text) {
+        showToast('バックアップ文字列を貼り付けてください', 'error');
+        return;
+      }
+      prepareRestorePreview(text);
+    }
+
+    // 復元前のプレビュー＆確認表示
+    function prepareRestorePreview(rawText) {
+      const previewArea = document.getElementById('restore-preview-area');
+      try {
+        const validated = parseAndValidateBackup(rawText);
+        pendingRestoreData = validated.data;
+
+        let dateLabel = '日時情報なし';
+        if (validated.exportedAt) {
+          const d = new Date(validated.exportedAt);
+          if (!isNaN(d.getTime())) {
+            dateLabel = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+          }
+        }
+
+        previewArea.classList.remove('hidden');
+        previewArea.innerHTML = `
+          <div class="flex items-start gap-2 text-amber-300">
+            <i data-lucide="alert-triangle" class="w-4 h-4 shrink-0 mt-0.5"></i>
+            <div class="text-[11px] leading-relaxed">
+              <p class="font-bold">現在のデータは上書きされます。復元しますか？</p>
+              <p class="text-slate-300 mt-1">書き出し日時: <span class="font-semibold">${escapeHtml(dateLabel)}</span></p>
+              <p class="text-slate-300">内容: 変動タスク ${validated.data.spotTasks.length}件 / ルーティン ${validated.data.routineTasks.length}件 / 休み ${validated.data.leaves.length}件 / メモ ${validated.data.memos.length}件</p>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2 pt-1">
+            <button onclick="cancelRestorePreview()" class="py-2 rounded-lg text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition">やめる</button>
+            <button onclick="executeRestoreData()" class="py-2 rounded-lg text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition">復元を実行する</button>
+          </div>
+        `;
+        lucide.createIcons({ root: previewArea });
+      } catch (err) {
+        pendingRestoreData = null;
+        previewArea.classList.add('hidden');
+        showToast(err.message, 'error');
+      }
+    }
+
+    function cancelRestorePreview() {
+      pendingRestoreData = null;
+      const previewArea = document.getElementById('restore-preview-area');
+      if (previewArea) previewArea.classList.add('hidden');
+    }
+
+    function executeRestoreData() {
+      if (!pendingRestoreData) return;
+      appState = pendingRestoreData;
+      saveData();
+      pendingRestoreData = null;
+      closeModal();
+      showToast('バックアップからデータを復元しました！');
+      renderCurrentView();
+    }
+
+    function confirmResetToSampleData() {
+      openModal(`
+        <div class="text-center space-y-3">
+          <div class="w-11 h-11 rounded-full bg-rose-500/15 text-rose-400 flex items-center justify-center mx-auto">
+            <i data-lucide="alert-triangle" class="w-5 h-5"></i>
+          </div>
+          <h3 class="text-base font-bold text-slate-100">初期データにリセットしますか？</h3>
+          <p class="text-xs text-slate-400 leading-relaxed">現在登録されているタスク・休み・メモがすべて消去され、最初のサンプル状態に戻ります。</p>
+          <div class="grid grid-cols-2 gap-2 pt-2">
+            <button onclick="openDataModal()" class="py-2.5 rounded-xl text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition">戻る</button>
+            <button onclick="resetToSampleData()" class="py-2.5 rounded-xl text-xs font-bold text-white bg-rose-500 hover:bg-rose-400 transition">リセットする</button>
+          </div>
+        </div>
+      `);
+    }
+
+    function resetToSampleData() {
+      appState = getInitialData();
+      saveData();
+      closeModal();
+      showToast('初期サンプルデータに戻しました');
+      renderCurrentView();
+    }
+
+    // ==========================================
+    // アプリ起動処理
+    // ==========================================
+    window.addEventListener('DOMContentLoaded', () => {
+      updateHeaderDate();
+      renderCurrentView();
+    });
+  </script>
+</body>
+</html>
