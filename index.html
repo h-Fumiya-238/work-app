@@ -713,12 +713,33 @@
           <div class="flex gap-2">
             <input type="text" id="routine-title" required placeholder="決まっている業務を追加..." 
               class="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-400 transition">
-            <select id="routine-freq" class="bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-400">
-              <option value="毎日">毎日</option>
-              <option value="毎週月曜">毎週月曜</option>
-              <option value="毎週金曜">毎週金曜</option>
-              <option value="月末">月末</option>
+            <select id="routine-freq" onchange="toggleCustomRoutineFreq(this.value)" class="bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-400">
+              <optgroup label="基本">
+                <option value="毎日">毎日</option>
+                <option value="平日のみ">平日のみ</option>
+                <option value="隔週">隔週</option>
+              </optgroup>
+              <optgroup label="曜日指定">
+                <option value="毎週月曜">毎週月曜</option>
+                <option value="毎週火曜">毎週火曜</option>
+                <option value="毎週水曜">毎週水曜</option>
+                <option value="毎週木曜">毎週木曜</option>
+                <option value="毎週金曜">毎週金曜</option>
+                <option value="毎週土曜">毎週土曜</option>
+                <option value="毎週日曜">毎週日曜</option>
+              </optgroup>
+              <optgroup label="月次・その他">
+                <option value="毎月1日">毎月1日</option>
+                <option value="毎月15日">毎月15日</option>
+                <option value="毎月25日">毎月25日</option>
+                <option value="月末">月末</option>
+                <option value="custom">自由入力...</option>
+              </optgroup>
             </select>
+          </div>
+          <div id="routine-custom-freq-wrap" class="hidden">
+            <input type="text" id="routine-custom-freq" placeholder="頻度を入力（例：第2水曜、2ヶ月に1回、出社日など）"
+              class="w-full bg-slate-900 border border-indigo-500/50 rounded-xl px-3.5 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-400">
           </div>
           <button type="submit" class="w-full bg-indigo-500 hover:bg-indigo-400 active:scale-[0.99] text-white font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow-md shadow-indigo-500/15">
             <i data-lucide="plus" class="w-4 h-4 stroke-[2.5]"></i>
@@ -1072,10 +1093,24 @@
     }
 
     // ルーティン操作
+    function toggleCustomRoutineFreq(val) {
+      const wrap = document.getElementById('routine-custom-freq-wrap');
+      const customInput = document.getElementById('routine-custom-freq');
+      if (!wrap) return;
+      if (val === 'custom') {
+        wrap.classList.remove('hidden');
+        if (customInput) customInput.focus();
+      } else {
+        wrap.classList.add('hidden');
+      }
+    }
+
     function handleAddRoutineTask(e) {
       e.preventDefault();
       const title = document.getElementById('routine-title').value.trim();
-      const frequency = document.getElementById('routine-freq').value;
+      const freqSelect = document.getElementById('routine-freq').value;
+      const customFreq = document.getElementById('routine-custom-freq')?.value.trim();
+      const frequency = freqSelect === 'custom' ? (customFreq || '定期') : freqSelect;
       if (!title) return;
 
       appState.routineTasks.push({
