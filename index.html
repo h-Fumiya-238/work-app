@@ -51,4 +51,631 @@
         <span>タスク</span>
       </button>
       <button onclick="switchTab('leave')" id="nav-leave" class="flex flex-col items-center py-1 px-3 text-xs font-medium text-slate-400">
-        <span class="w-6 h
+        <span class="w-6 h-0.5 bg-transparent rounded-full mb-1.5" id="ind-leave"></span>
+        <span>休み管理</span>
+      </button>
+      <button onclick="switchTab('notes')" id="nav-notes" class="flex flex-col items-center py-1 px-3 text-xs font-medium text-slate-400">
+        <span class="w-6 h-0.5 bg-transparent rounded-full mb-1.5" id="ind-notes"></span>
+        <span>メモ</span>
+      </button>
+    </nav>
+
+    <!-- Calendar Modal -->
+    <div id="calendar-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-base text-white">カレンダーに登録</h3>
+          <button onclick="closeCalendarModal()" class="text-slate-400 text-lg">✕</button>
+        </div>
+        <p id="cal-modal-title" class="text-sm text-cyan-300 font-medium bg-slate-800/80 p-3 rounded-xl"></p>
+        <div class="space-y-2.5">
+          <a id="gcal-link" href="#" target="_blank" rel="noopener noreferrer" onclick="closeCalendarModal()" class="block w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-500 text-white text-center font-semibold rounded-xl text-sm">
+            Googleカレンダーで開く
+          </a>
+          <button onclick="downloadICS()" class="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-xl text-sm border border-slate-700">
+            iPhone / 標準カレンダー用 (.ics)
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings / Backup Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
+      <div class="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-sm p-5 space-y-4">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold text-base text-white">データ管理・バックアップ</h3>
+          <button onclick="closeSettings()" class="text-slate-400 text-lg">✕</button>
+        </div>
+        <div class="space-y-3">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">年間有給付与日数</label>
+            <input type="number" id="paid-leave-total" onchange="updateTotalLeave(this.value)" class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm text-white" />
+          </div>
+          <button onclick="copyBackup()" class="w-full py-2.5 bg-cyan-600 text-white font-semibold rounded-xl text-sm">
+            バックアップ文字をコピー
+          </button>
+          <div class="pt-2 border-t border-slate-800">
+            <label class="text-xs text-slate-400 block mb-1">バックアップから復元（貼り付け）</label>
+            <textarea id="restore-input" rows="2" placeholder="コピーした文字をここに貼り付け" class="w-full bg-slate-800 border border-slate-700 rounded-xl p-2 text-xs text-white"></textarea>
+            <button onclick="restoreBackup()" class="mt-2 w-full py-2 bg-slate-700 text-white font-semibold rounded-xl text-xs">
+              データを復元する
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const STORAGE_KEY = 'workflow_app_data_v1';
+    let state = {
+      tab: 'home',
+      taskSubTab: 'flex',
+      leaveSubTab: 'list',
+      calMonthOffset: 0,
+      flexTasks: [],
+      routines: [],
+      leaves: [],
+      notes: [],
+      totalPaidLeave: 20
+    };
+    let currentCalItem = null;
+
+    function loadData() {
+      try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          state = { ...state, ...parsed };
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      render();
+    }
+
+    function formatDateJP(date) {
+      const days = ['日', '月', '火', '水', '木', '金', '土'];
+      return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 (${days[date.getDay()]})`;
+    }
+
+    function getTodayStr() {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    }
+
+    function switchTab(tab) {
+      state.tab = tab;
+      render();
+    }
+
+    function switchTaskSub(sub) {
+      state.taskSubTab = sub;
+      render();
+    }
+
+    function switchLeaveSub(sub) {
+      state.leaveSubTab = sub;
+      render();
+    }
+
+    function changeCalMonth(delta) {
+      state.calMonthOffset += delta;
+      render();
+    }
+
+    // Flex Tasks
+    function addFlexTask() {
+      const titleInput = document.getElementById('flex-title');
+      const dateInput = document.getElementById('flex-date');
+      const title = titleInput.value.trim();
+      if (!title) return;
+      state.flexTasks.unshift({
+        id: Date.now().toString(),
+        title,
+        dueDate: dateInput.value || getTodayStr(),
+        done: false
+      });
+      saveData();
+    }
+
+    function toggleFlexTask(id) {
+      const t = state.flexTasks.find(x => x.id === id);
+      if (t) t.done = !t.done;
+      saveData();
+    }
+
+    function deleteFlexTask(id) {
+      state.flexTasks = state.flexTasks.filter(x => x.id !== id);
+      saveData();
+    }
+
+    // Routines
+    function handleFreqChange(val) {
+      const customInput = document.getElementById('routine-custom');
+      if (val === 'custom') {
+        customInput.classList.remove('hidden');
+      } else {
+        customInput.classList.add('hidden');
+      }
+    }
+
+    function addRoutine() {
+      const title = document.getElementById('routine-title').value.trim();
+      const freqSelect = document.getElementById('routine-freq').value;
+      const customVal = document.getElementById('routine-custom').value.trim();
+      if (!title) return;
+      const freq = freqSelect === 'custom' ? (customVal || 'カスタム') : freqSelect;
+      state.routines.push({
+        id: Date.now().toString(),
+        title,
+        freq,
+        done: false
+      });
+      saveData();
+    }
+
+    function toggleRoutine(id) {
+      const r = state.routines.find(x => x.id === id);
+      if (r) r.done = !r.done;
+      saveData();
+    }
+
+    function resetRoutines() {
+      state.routines.forEach(r => r.done = false);
+      saveData();
+    }
+
+    function deleteRoutine(id) {
+      state.routines = state.routines.filter(x => x.id !== id);
+      saveData();
+    }
+
+    // Leaves
+    function addLeave() {
+      const date = document.getElementById('leave-date').value;
+      const type = document.getElementById('leave-type').value;
+      const note = document.getElementById('leave-note').value.trim();
+      if (!date) return;
+      state.leaves.push({
+        id: Date.now().toString(),
+        date,
+        type,
+        note
+      });
+      state.leaves.sort((a, b) => a.date.localeCompare(b.date));
+      saveData();
+    }
+
+    function deleteLeave(id) {
+      state.leaves = state.leaves.filter(x => x.id !== id);
+      saveData();
+    }
+
+    // Notes
+    function addNote() {
+      const text = document.getElementById('note-input').value.trim();
+      if (!text) return;
+      state.notes.unshift({
+        id: Date.now().toString(),
+        text,
+        createdAt: new Date().toLocaleDateString('ja-JP')
+      });
+      saveData();
+    }
+
+    function convertNoteToTask(id) {
+      const n = state.notes.find(x => x.id === id);
+      if (!n) return;
+      state.flexTasks.unshift({
+        id: Date.now().toString(),
+        title: n.text,
+        dueDate: getTodayStr(),
+        done: false
+      });
+      state.notes = state.notes.filter(x => x.id !== id);
+      saveData();
+      alert('変動タスクに移動しました！');
+    }
+
+    function deleteNote(id) {
+      state.notes = state.notes.filter(x => x.id !== id);
+      saveData();
+    }
+
+    // Calendar Integration
+    function openCalendarModal(title, dateStr, freq = '') {
+      const cleanDate = (dateStr || getTodayStr()).replace(/-/g, '');
+      const nextDayDate = new Date(dateStr || getTodayStr());
+      nextDayDate.setDate(nextDayDate.getDate() + 1);
+      const nextDayStr = `${nextDayDate.getFullYear()}${String(nextDayDate.getMonth() + 1).padStart(2, '0')}${String(nextDayDate.getDate()).padStart(2, '0')}`;
+
+      let recur = '';
+      if (freq === '毎日') recur = '&recur=RRULE:FREQ=DAILY';
+      else if (freq === '平日のみ') recur = '&recur=RRULE:FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR';
+      else if (freq.startsWith('毎週')) {
+        const map = { '月': 'MO', '火': 'TU', '水': 'WE', '木': 'TH', '金': 'FR', '土': 'SA', '日': 'SU' };
+        const dayChar = freq.charAt(2);
+        if (map[dayChar]) recur = `&recur=RRULE:FREQ=WEEKLY;BYDAY=${map[dayChar]}`;
+      } else if (freq.startsWith('毎月')) {
+        recur = '&recur=RRULE:FREQ=MONTHLY';
+      }
+
+      const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${cleanDate}/${nextDayStr}${recur}`;
+      currentCalItem = { title, cleanDate, nextDayStr };
+
+      document.getElementById('cal-modal-title').textContent = `${title} (${dateStr || '今日から'})`;
+      document.getElementById('gcal-link').href = url;
+      document.getElementById('calendar-modal').classList.remove('hidden');
+    }
+
+    function closeCalendarModal() {
+      document.getElementById('calendar-modal').classList.add('hidden');
+    }
+
+    function downloadICS() {
+      if (!currentCalItem) return;
+      const ics = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'BEGIN:VEVENT',
+        `SUMMARY:${currentCalItem.title}`,
+        `DTSTART;VALUE=DATE:${currentCalItem.cleanDate}`,
+        `DTEND;VALUE=DATE:${currentCalItem.nextDayStr}`,
+        'END:VEVENT',
+        'END:VCALENDAR'
+      ].join('\r\n');
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'event.ics';
+      link.click();
+      closeCalendarModal();
+    }
+
+    // Settings
+    function openSettings() {
+      document.getElementById('paid-leave-total').value = state.totalPaidLeave;
+      document.getElementById('settings-modal').classList.remove('hidden');
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-modal').classList.add('hidden');
+    }
+
+    function updateTotalLeave(val) {
+      state.totalPaidLeave = Number(val) || 20;
+      saveData();
+    }
+
+    function copyBackup() {
+      const dataStr = JSON.stringify(state);
+      navigator.clipboard.writeText(dataStr).then(() => {
+        alert('バックアップ文字をコピーしました！メモ帳やLINEに貼り付けて保管してください。');
+      });
+    }
+
+    function restoreBackup() {
+      try {
+        const raw = document.getElementById('restore-input').value.trim();
+        if (!raw) return;
+        const parsed = JSON.parse(raw);
+        state = { ...state, ...parsed };
+        saveData();
+        closeSettings();
+        alert('データを復元しました！');
+      } catch (e) {
+        alert('文字の形式が正しくありません。コピーした全文を貼り付けてください。');
+      }
+    }
+
+    function escapeHTML(str) {
+      return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+    }
+
+    function renderCalendarGrid() {
+      const now = new Date();
+      const target = new Date(now.getFullYear(), now.getMonth() + state.calMonthOffset, 1);
+      const year = target.getFullYear();
+      const month = target.getMonth();
+      const firstDay = target.getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      let cells = '';
+      for (let i = 0; i < firstDay; i++) {
+        cells += `<div class="h-14 bg-slate-900/40 rounded-lg"></div>`;
+      }
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        const dayLeaves = state.leaves.filter(l => l.date === dateStr);
+        const dayTasks = state.flexTasks.filter(t => t.dueDate === dateStr && !t.done);
+        const isToday = dateStr === getTodayStr();
+
+        cells += `
+          <div class="h-14 p-1 rounded-lg border ${isToday ? 'border-cyan-400 bg-cyan-950/30' : 'border-slate-800 bg-slate-800/40'} flex flex-col justify-between overflow-hidden">
+            <span class="text-[11px] font-semibold ${isToday ? 'text-cyan-300' : 'text-slate-300'}">${d}</span>
+            <div class="space-y-0.5">
+              ${dayLeaves.map(l => `<div class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1 rounded truncate">${escapeHTML(l.type)}</div>`).join('')}
+              ${dayTasks.map(t => `<div class="text-[9px] bg-indigo-500/30 text-indigo-200 px-1 rounded truncate">${escapeHTML(t.title)}</div>`).join('')}
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="glass-card p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <button onclick="changeCalMonth(-1)" class="px-3 py-1 bg-slate-800 rounded-lg text-xs">◀ 前月</button>
+            <span class="font-bold text-sm text-white">${year}年 ${month + 1}月</span>
+            <button onclick="changeCalMonth(1)" class="px-3 py-1 bg-slate-800 rounded-lg text-xs">翌月 ▶</button>
+          </div>
+          <div class="grid grid-cols-7 gap-1 text-center text-[11px] text-slate-400 font-medium">
+            <div class="text-rose-400">日</div><div>月</div><div>火</div><div>水</div><div>木</div><div>金</div><div class="text-sky-400">土</div>
+          </div>
+          <div class="grid grid-cols-7 gap-1">
+            ${cells}
+          </div>
+          <div class="flex gap-3 text-[11px] text-slate-400 pt-1">
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>休み予定</span>
+            <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-indigo-400"></span>タスク期限</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function render() {
+      const titles = { home: 'ホーム', tasks: 'タスク管理', leave: '休み管理', notes: 'クイックメモ' };
+      document.getElementById('header-title').textContent = titles[state.tab];
+      document.getElementById('header-date').textContent = formatDateJP(new Date());
+
+      ['home', 'tasks', 'leave', 'notes'].forEach(t => {
+        const btn = document.getElementById(`nav-${t}`);
+        const ind = document.getElementById(`ind-${t}`);
+        if (state.tab === t) {
+          btn.classList.replace('text-slate-400', 'text-cyan-400');
+          ind.classList.replace('bg-transparent', 'bg-cyan-400');
+        } else {
+          btn.classList.replace('text-cyan-400', 'text-slate-400');
+          ind.classList.replace('bg-cyan-400', 'bg-transparent');
+        }
+      });
+
+      const main = document.getElementById('main-content');
+      const usedPaid = state.leaves.reduce((acc, l) => acc + (l.type === '有給(全休)' ? 1 : l.type.includes('半休') ? 0.5 : 0), 0);
+      const remainPaid = Math.max(0, state.totalPaidLeave - usedPaid);
+
+      if (state.tab === 'home') {
+        const pendingFlex = state.flexTasks.filter(t => !t.done);
+        const pendingRoutines = state.routines.filter(r => !r.done);
+        const nextLeave = state.leaves.find(l => l.date >= getTodayStr());
+
+        main.innerHTML = `
+          <div class="grid grid-cols-3 gap-2.5">
+            <div onclick="switchTab('tasks')" class="glass-card p-3.5 text-center active:scale-95 transition">
+              <div class="text-xs text-slate-400">未完了タスク</div>
+              <div class="text-2xl font-bold text-indigo-400 mt-1">${pendingFlex.length}</div>
+            </div>
+            <div onclick="switchTab('tasks'); switchTaskSub('routine')" class="glass-card p-3.5 text-center active:scale-95 transition">
+              <div class="text-xs text-slate-400">残りルーティン</div>
+              <div class="text-2xl font-bold text-cyan-400 mt-1">${pendingRoutines.length}</div>
+            </div>
+            <div onclick="switchTab('leave')" class="glass-card p-3.5 text-center active:scale-95 transition">
+              <div class="text-xs text-slate-400">有給残日数</div>
+              <div class="text-2xl font-bold text-emerald-400 mt-1">${remainPaid}<span class="text-xs font-normal ml-0.5">日</span></div>
+            </div>
+          </div>
+
+          <div class="glass-card p-4 space-y-2.5">
+            <div class="flex justify-between items-center">
+              <h2 class="text-sm font-bold text-white">⚡ 今日の優先タスク</h2>
+              <button onclick="switchTab('tasks')" class="text-xs text-cyan-400">すべて見る</button>
+            </div>
+            ${pendingFlex.length === 0 ? '<p class="text-xs text-slate-400 py-2">未完了の変動タスクはありません</p>' :
+              pendingFlex.slice(0, 4).map(t => `
+                <div class="flex items-center justify-between bg-slate-800/60 p-3 rounded-xl border border-slate-700/50">
+                  <div class="flex items-center gap-3 min-w-0">
+                    <input type="checkbox" onchange="toggleFlexTask('${t.id}')" class="w-4 h-4 accent-indigo-500 rounded" />
+                    <div class="truncate">
+                      <div class="text-sm text-slate-100 truncate">${escapeHTML(t.title)}</div>
+                      <div class="text-[11px] text-slate-400">期限: ${t.dueDate}</div>
+                    </div>
+                  </div>
+                  <button onclick="openCalendarModal('${escapeHTML(t.title)}', '${t.dueDate}')" class="text-xs px-2 py-1 bg-slate-700/80 rounded-lg shrink-0">📅＋</button>
+                </div>
+              `).join('')
+            }
+          </div>
+
+          <div class="glass-card p-4 space-y-2">
+            <h2 class="text-sm font-bold text-white">🌴 直近の休み予定</h2>
+            ${nextLeave ? `
+              <div class="flex justify-between items-center bg-emerald-950/30 border border-emerald-800/40 p-3 rounded-xl">
+                <div>
+                  <div class="text-sm font-semibold text-emerald-300">${nextLeave.date}（${escapeHTML(nextLeave.type)}）</div>
+                  ${nextLeave.note ? `<div class="text-xs text-slate-400 mt-0.5">${escapeHTML(nextLeave.note)}</div>` : ''}
+                </div>
+                <button onclick="openCalendarModal('${escapeHTML(nextLeave.type)}', '${nextLeave.date}')" class="text-xs px-2.5 py-1.5 bg-emerald-800/50 text-emerald-200 rounded-lg">📅＋</button>
+              </div>
+            ` : '<p class="text-xs text-slate-400">予定されている休みはありません</p>'}
+          </div>
+        `;
+      } else if (state.tab === 'tasks') {
+        const isFlex = state.taskSubTab === 'flex';
+        main.innerHTML = `
+          <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
+            <button onclick="switchTaskSub('flex')" class="py-2 text-xs font-bold rounded-lg transition ${isFlex ? 'bg-indigo-600 text-white' : 'text-slate-400'}">
+              ⚡ 変動タスク (${state.flexTasks.filter(x => !x.done).length})
+            </button>
+            <button onclick="switchTaskSub('routine')" class="py-2 text-xs font-bold rounded-lg transition ${!isFlex ? 'bg-indigo-600 text-white' : 'text-slate-400'}">
+              🔁 決まっているタスク (${state.routines.filter(x => !x.done).length})
+            </button>
+          </div>
+
+          ${isFlex ? `
+            <div class="glass-card p-4 space-y-3">
+              <input id="flex-title" type="text" placeholder="新しいタスクを入力..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white" />
+              <div class="flex gap-2">
+                <input id="flex-date" type="date" value="${getTodayStr()}" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+                <button onclick="addFlexTask()" class="px-5 py-2 bg-indigo-600 text-white font-bold rounded-xl text-sm">追加</button>
+              </div>
+            </div>
+            <div class="space-y-2">
+              ${state.flexTasks.length === 0 ? '<div class="glass-card p-6 text-center text-xs text-slate-400">登録されているタスクはありません</div>' :
+                state.flexTasks.map(t => `
+                  <div class="glass-card p-3.5 flex items-center justify-between gap-2 ${t.done ? 'opacity-50' : ''}">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleFlexTask('${t.id}')" class="w-5 h-5 accent-indigo-500 rounded" />
+                      <div class="truncate">
+                        <div class="text-sm font-medium ${t.done ? 'line-through text-slate-400' : 'text-white'} truncate">${escapeHTML(t.title)}</div>
+                        <div class="text-xs text-slate-400">期限: ${t.dueDate}</div>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <button onclick="openCalendarModal('${escapeHTML(t.title)}', '${t.dueDate}')" class="p-2 bg-slate-800 rounded-lg text-xs" title="カレンダーに追加">📅＋</button>
+                      <button onclick="deleteFlexTask('${t.id}')" class="p-2 text-slate-400 hover:text-rose-400 text-xs">🗑️</button>
+                    </div>
+                  </div>
+                `).join('')
+              }
+            </div>
+          ` : `
+            <div class="glass-card p-4 space-y-3">
+              <input id="routine-title" type="text" placeholder="決まっている仕事を入力..." class="w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm text-white" />
+              <div class="flex gap-2">
+                <select id="routine-freq" onchange="handleFreqChange(this.value)" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                  <option value="毎日">毎日</option>
+                  <option value="平日のみ">平日のみ（月〜金）</option>
+                  <option value="毎週月曜">毎週月曜</option>
+                  <option value="毎週火曜">毎週火曜</option>
+                  <option value="毎週水曜">毎週水曜</option>
+                  <option value="毎週木曜">毎週木曜</option>
+                  <option value="毎週金曜">毎週金曜</option>
+                  <option value="毎週土曜">毎週土曜</option>
+                  <option value="毎週日曜">毎週日曜</option>
+                  <option value="隔週">隔週</option>
+                  <option value="毎月1日">毎月1日</option>
+                  <option value="毎月15日">毎月15日</option>
+                  <option value="毎月25日">毎月25日</option>
+                  <option value="月末">月末</option>
+                  <option value="custom">自由入力（カスタム）</option>
+                </select>
+                <button onclick="addRoutine()" class="px-5 py-2 bg-indigo-600 text-white font-bold rounded-xl text-sm">追加</button>
+              </div>
+              <input id="routine-custom" type="text" placeholder="例：第2水曜、四半期末など" class="hidden w-full bg-slate-800 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white" />
+            </div>
+
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs text-slate-400">完了状況: ${state.routines.filter(r => r.done).length} / ${state.routines.length}</span>
+              ${state.routines.length > 0 ? `<button onclick="resetRoutines()" class="text-xs text-cyan-400">チェックを全解除</button>` : ''}
+            </div>
+
+            <div class="space-y-2">
+              ${state.routines.length === 0 ? '<div class="glass-card p-6 text-center text-xs text-slate-400">登録されているルーティンはありません</div>' :
+                state.routines.map(r => `
+                  <div class="glass-card p-3.5 flex items-center justify-between gap-2 ${r.done ? 'opacity-50' : ''}">
+                    <div class="flex items-center gap-3 min-w-0">
+                      <input type="checkbox" ${r.done ? 'checked' : ''} onchange="toggleRoutine('${r.id}')" class="w-5 h-5 accent-cyan-500 rounded" />
+                      <div class="truncate">
+                        <div class="text-sm font-medium ${r.done ? 'line-through text-slate-400' : 'text-white'} truncate">${escapeHTML(r.title)}</div>
+                        <span class="inline-block mt-0.5 text-[11px] px-2 py-0.5 bg-cyan-950 text-cyan-300 border border-cyan-800/50 rounded-md">${escapeHTML(r.freq)}</span>
+                      </div>
+                    </div>
+                    <div class="flex items-center gap-1.5 shrink-0">
+                      <button onclick="openCalendarModal('${escapeHTML(r.title)}', '${getTodayStr()}', '${escapeHTML(r.freq)}')" class="p-2 bg-slate-800 rounded-lg text-xs" title="カレンダーに追加">📅＋</button>
+                      <button onclick="deleteRoutine('${r.id}')" class="p-2 text-slate-400 hover:text-rose-400 text-xs">🗑️</button>
+                    </div>
+                  </div>
+                `).join('')
+              }
+            </div>
+          `}
+        `;
+      } else if (state.tab === 'leave') {
+        const isList = state.leaveSubTab === 'list';
+        main.innerHTML = `
+          <div class="glass-card p-4 flex items-center justify-between">
+            <div>
+              <div class="text-xs text-slate-400">残りの有給休暇</div>
+              <div class="text-2xl font-bold text-emerald-400 mt-0.5">${remainPaid} <span class="text-xs font-normal text-slate-300">/ ${state.totalPaidLeave}日</span></div>
+            </div>
+            <div class="text-right text-xs text-slate-400">
+              取得済み: <span class="text-white font-semibold">${usedPaid}日</span>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 p-1 bg-slate-900 rounded-xl border border-slate-800">
+            <button onclick="switchLeaveSub('list')" class="py-2 text-xs font-bold rounded-lg ${isList ? 'bg-emerald-600 text-white' : 'text-slate-400'}">リスト・登録</button>
+            <button onclick="switchLeaveSub('calendar')" class="py-2 text-xs font-bold rounded-lg ${!isList ? 'bg-emerald-600 text-white' : 'text-slate-400'}">月間カレンダー確認</button>
+          </div>
+
+          ${isList ? `
+            <div class="glass-card p-4 space-y-3">
+              <div class="grid grid-cols-2 gap-2">
+                <input id="leave-date" type="date" value="${getTodayStr()}" class="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+                <select id="leave-type" class="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white">
+                  <option value="有給(全休)">有給(全休)</option>
+                  <option value="午前半休">午前半休</option>
+                  <option value="午後半休">午後半休</option>
+                  <option value="代休・振休">代休・振休</option>
+                  <option value="公休・その他">公休・その他</option>
+                </select>
+              </div>
+              <div class="flex gap-2">
+                <input id="leave-note" type="text" placeholder="メモ（通院、旅行など）" class="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white" />
+                <button onclick="addLeave()" class="px-5 py-2 bg-emerald-600 text-white font-bold rounded-xl text-sm">登録</button>
+              </div>
+            </div>
+
+            <div class="space-y-2">
+              ${state.leaves.length === 0 ? '<div class="glass-card p-6 text-center text-xs text-slate-400">登録されている休み予定はありません</div>' :
+                state.leaves.map(l => `
+                  <div class="glass-card p-3.5 flex items-center justify-between">
+                    <div>
+                      <div class="text-sm font-bold text-emerald-300">${l.date} <span class="text-xs font-normal px-2 py-0.5 bg-emerald-950 rounded ml-1">${escapeHTML(l.type)}</span></div>
+                      ${l.note ? `<div class="text-xs text-slate-400 mt-1">${escapeHTML(l.note)}</div>` : ''}
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                      <button onclick="openCalendarModal('${escapeHTML(l.type)}', '${l.date}')" class="p-2 bg-slate-800 rounded-lg text-xs">📅＋</button>
+                      <button onclick="deleteLeave('${l.id}')" class="p-2 text-slate-400 hover:text-rose-400 text-xs">🗑️</button>
+                    </div>
+                  </div>
+                `).join('')
+              }
+            </div>
+          ` : renderCalendarGrid()}
+        `;
+      } else if (state.tab === 'notes') {
+        main.innerHTML = `
+          <div class="glass-card p-4 space-y-2.5">
+            <textarea id="note-input" rows="3" placeholder="思いついたことや仕事のメモをサッと入力..." class="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-sm text-white"></textarea>
+            <button onclick="addNote()" class="w-full py-2.5 bg-indigo-600 text-white font-bold rounded-xl text-sm">メモを保存</button>
+          </div>
+          <div class="space-y-2.5">
+            ${state.notes.length === 0 ? '<div class="glass-card p-6 text-center text-xs text-slate-400">メモはまだありません</div>' :
+              state.notes.map(n => `
+                <div class="glass-card p-4 space-y-2.5">
+                  <p class="text-sm text-slate-100 whitespace-pre-wrap">${escapeHTML(n.text)}</p>
+                  <div class="flex items-center justify-between pt-2 border-t border-slate-800">
+                    <span class="text-[11px] text-slate-400">${n.createdAt}</span>
+                    <div class="flex gap-2">
+                      <button onclick="convertNoteToTask('${n.id}')" class="text-xs px-2.5 py-1 bg-indigo-950 text-indigo-300 border border-indigo-800/60 rounded-lg">⚡ タスク化</button>
+                      <button onclick="deleteNote('${n.id}')" class="text-xs px-2 py-1 text-slate-400">🗑️</button>
+                    </div>
+                  </div>
+                </div>
+              `).join('')
+            }
+          </div>
+        `;
+      }
+    }
+
+    loadData();
+    render();
+  </script>
+</body>
+</html>
