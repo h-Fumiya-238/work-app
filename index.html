@@ -101,9 +101,13 @@
       </nav>
 
       <div class="flex items-center gap-2">
+        <div id="sync-status-badge" onclick="openDataModal()" class="cursor-pointer px-2.5 py-1.5 rounded-xl bg-slate-800/70 border border-slate-700/70 flex items-center gap-1.5 text-[11px] font-medium text-slate-400 hover:text-slate-200 transition" title="同期ステータス">
+          <span id="sync-status-dot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span id="sync-status-text" class="hidden sm:inline">端末内保存</span>
+        </div>
         <button onclick="openDataModal()" class="p-2 md:px-3 md:py-2 rounded-xl bg-slate-800/70 hover:bg-slate-800 text-slate-300 transition flex items-center gap-1.5 text-xs font-medium" title="データ管理">
           <i data-lucide="settings" class="w-4 h-4"></i>
-          <span class="hidden sm:inline">設定・バックアップ</span>
+          <span class="hidden sm:inline">設定・同期</span>
         </button>
       </div>
     </header>
@@ -147,7 +151,131 @@
       </div>
     </div>
 
-  </div>
+  <!-- リアルタイム自動同期エンジン（Firebase SDK） -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    window.cloudSyncEngine = {
+      db: null,
+      auth: null,
+      user: null,
+      unsubscribe: null,
+      isRemoteUpdating: false,
+      appId: typeof __app_id !== 'undefined' ? __app_id : 'work-app-sync',
+
+      // 保存されたFirebase設定または環境設定を取得
+      getConfig() {
+        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+          try { return JSON.parse(__firebase_config); } catch (e) {}
+        }
+        const saved = localStorage.getItem('workflow_firebase_config');
+        if (saved) {
+          try { return JSON.parse(saved); } catch (e) {}
+        }
+        return null;
+      },
+
+      getRoomId() {
+        return (localStorage.getItem('workflow_sync_room_id') || '').trim();
+      },
+
+      updateBadge(status, label) {
+        const dot = document.getElementById('sync-status-dot');
+        const text = document.getElementById('sync-status-text');
+        if (!dot || !text) return;
+        dot.className = 'w-2 h-2 rounded-full ' + (
+          status === 'connected' ? 'bg-emerald-400 animate-pulse' :
+          status === 'connecting' ? 'bg-amber-400 animate-bounce' :
+          status === 'error' ? 'bg-rose-400' : 'bg-slate-500'
+        );
+        text.textContent = label;
+      },
+
+      async init() {
+        const config = this.getConfig();
+        const roomId = this.getRoomId();
+        if (!config || !roomId) {
+          this.updateBadge('offline', '端末内保存');
+          return;
+        }
+
+        try {
+          this.updateBadge('connecting', '同期接続中...');
+          const app = initializeApp(config);
+          this.auth = getAuth(app);
+          this.db = getFirestore(app);
+
+          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+            await signInWithCustomToken(this.auth, __initial_auth_token);
+          } else {
+            await signInAnonymously(this.auth);
+          }
+          this.user = this.auth.currentUser;
+          if (!this.user) return;
+
+          this.startListening(roomId);
+        } catch (err) {
+          console.error('Firebase init error:', err);
+          this.updateBadge('error', '同期エラー');
+        }
+      },
+
+      startListening(roomId) {
+        if (!this.db || !this.user || !roomId) return;
+        if (this.unsubscribe) this.unsubscribe();
+
+        // ルール1準拠のパブリック共有パス（同じ同期IDを入力した端末同士で同期）
+        const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const docRef = doc(this.db, 'artifacts', this.appId, 'public', 'data', 'workspaces', safeRoomId);
+
+        this.unsubscribe = onSnapshot(docRef, (snapshot) => {
+          this.updateBadge('connected', 'クラウド同期中');
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            if (data && data.payloadJson) {
+              try {
+                const remoteState = JSON.parse(data.payloadJson);
+                this.isRemoteUpdating = true;
+                window.applyRemoteState(remoteState);
+                this.isRemoteUpdating = false;
+              } catch (e) {
+                console.error('Parse remote state error:', e);
+              }
+            }
+          } else {
+            // 初回作成時は現在の端末データをクラウドへアップロード
+            this.pushState(window.getAppState());
+          }
+        }, (error) => {
+          console.error('Snapshot listener error:', error);
+          this.updateBadge('error', '接続エラー');
+        });
+      },
+
+      async pushState(stateObj) {
+        if (this.isRemoteUpdating) return;
+        const roomId = this.getRoomId();
+        if (!this.db || !this.user || !roomId) return;
+
+        try {
+          const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+          const docRef = doc(this.db, 'artifacts', this.appId, 'public', 'data', 'workspaces', safeRoomId);
+          await setDoc(docRef, {
+            payloadJson: JSON.stringify(stateObj),
+            updatedAt: Date.now()
+          });
+        } catch (e) {
+          console.error('Push state error:', e);
+        }
+      }
+    };
+
+    window.addEventListener('DOMContentLoaded', () => {
+      window.cloudSyncEngine.init();
+    });
+  </script>
 
   <script>
     // ==========================================
@@ -230,10 +358,30 @@
     function saveState(stateToSave = appState) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        if (window.cloudSyncEngine) {
+          window.cloudSyncEngine.pushState(stateToSave);
+        }
       } catch (e) {
         console.error('Save error:', e);
       }
     }
+
+    window.getAppState = function() {
+      return appState;
+    };
+
+    window.applyRemoteState = function(remoteState) {
+      if (!remoteState || typeof remoteState !== 'object') return;
+      appState = {
+        spotTasks: Array.isArray(remoteState.spotTasks) ? remoteState.spotTasks : [],
+        routineTasks: Array.isArray(remoteState.routineTasks) ? remoteState.routineTasks : [],
+        totalPaidLeaveDays: typeof remoteState.totalPaidLeaveDays === 'number' ? remoteState.totalPaidLeaveDays : 20,
+        leaves: Array.isArray(remoteState.leaves) ? remoteState.leaves : [],
+        memos: Array.isArray(remoteState.memos) ? remoteState.memos : []
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      renderCurrentView();
+    };
 
     function escapeHtml(str) {
       if (!str) return '';
@@ -280,7 +428,182 @@
     });
 
     // ==========================================
-    // ナビゲーション制御（スマホ下部＆PC上部同期）
+    // データ管理モーダル（クラウド同期・バックアップ・初期化）
+    // ==========================================
+    function openDataModal() {
+      const currentRoomId = localStorage.getItem('workflow_sync_room_id') || '';
+      const hasCustomConfig = !!localStorage.getItem('workflow_firebase_config') || (typeof __firebase_config !== 'undefined');
+
+      openModal(`
+        <div class="space-y-4 max-h-[85vh] overflow-y-auto no-scrollbar pr-1">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <i data-lucide="refresh-cw" class="w-4 h-4 text-emerald-400"></i>
+              <h3 class="text-base font-bold text-slate-100">スマホ・PC自動同期＆データ管理</h3>
+            </div>
+            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-200 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
+          </div>
+
+          <!-- クラウドリアルタイム同期セクション -->
+          <div class="bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-3.5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                <i data-lucide="cloud" class="w-3.5 h-3.5"></i>
+                <span>リアルタイム自動同期設定</span>
+              </span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full ${currentRoomId && hasCustomConfig ? 'bg-emerald-500/20 text-emerald-300' : 'bg-slate-800 text-slate-400'}">
+                ${currentRoomId && hasCustomConfig ? '設定済み' : '未設定'}
+              </span>
+            </div>
+            <p class="text-[11px] text-slate-400 leading-relaxed">
+              スマホとパソコンで<strong>同じ「同期ID（合言葉）」</strong>とFirebase設定を入れると、変更が1秒で自動反映されます。
+            </p>
+            <div>
+              <label class="block text-[10px] text-slate-400 mb-1">① 自分専用の同期ID（半角英数字・好きな合言葉）</label>
+              <input type="text" id="sync-room-input" value="${escapeHtml(currentRoomId)}" placeholder="例: fumiya-work-2026"
+                class="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400">
+            </div>
+            ${typeof __firebase_config === 'undefined' ? `
+              <div>
+                <label class="block text-[10px] text-slate-400 mb-1">② Firebase設定コード（firebaseConfigの中身）</label>
+                <textarea id="firebase-config-input" rows="3" placeholder='{"apiKey": "...", "projectId": "...", ...}'
+                  class="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-emerald-400">${escapeHtml(localStorage.getItem('workflow_firebase_config') || '')}</textarea>
+              </div>
+            ` : ''}
+            <div class="flex gap-2">
+              <button onclick="saveSyncSettings()" class="flex-1 py-2.5 px-3 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 transition">
+                同期を開始・保存する
+              </button>
+              ${currentRoomId ? `
+                <button onclick="disableSyncSettings()" class="py-2.5 px-3 rounded-xl text-xs font-medium text-slate-400 bg-slate-800 hover:bg-slate-700 transition">
+                  解除
+                </button>
+              ` : ''}
+            </div>
+          </div>
+
+          <!-- 手動バックアップセクション -->
+          <div class="space-y-2 pt-1">
+            <p class="text-[11px] font-semibold text-slate-400">手動バックアップ（文字コピー移行）</p>
+            <div class="grid grid-cols-2 gap-2">
+              <button onclick="copyBackupData()" class="py-2.5 px-3 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                <i data-lucide="copy" class="w-3.5 h-3.5 text-sky-400"></i>
+                <span>コピー</span>
+              </button>
+              <button onclick="showImportArea()" class="py-2.5 px-3 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-1.5 transition">
+                <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>復元</span>
+              </button>
+            </div>
+          </div>
+          <div id="import-area" class="hidden space-y-2 pt-2 border-t border-slate-800">
+            <textarea id="import-json-input" rows="3" placeholder="コピーしたデータをここに貼り付け..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-400"></textarea>
+            <button onclick="executeImportData()" class="w-full py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300">データを上書き復元する</button>
+          </div>
+          <div class="pt-2 border-t border-slate-800">
+            <button onclick="resetToSampleData()" class="w-full py-2 px-3 rounded-xl text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition">
+              初期サンプルデータに戻す
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    function saveSyncSettings() {
+      const roomId = (document.getElementById('sync-room-input')?.value || '').trim();
+      if (!roomId) {
+        showToast('同期ID（合言葉）を入力してください');
+        return;
+      }
+
+      const configEl = document.getElementById('firebase-config-input');
+      if (configEl) {
+        let rawCfg = configEl.value.trim();
+        if (!rawCfg) {
+          showToast('Firebase設定コードを貼り付けてください');
+          return;
+        }
+        try {
+          // "const firebaseConfig = { ... };" の形式で貼られても自動抽出できるよう整形
+          const firstBrace = rawCfg.indexOf('{');
+          const lastBrace = rawCfg.lastIndexOf('}');
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            rawCfg = rawCfg.slice(firstBrace, lastBrace + 1);
+          }
+          // キーにダブルクォーテーションが無いJSオブジェクト形式もJSON変換対応
+          const normalizedJson = rawCfg.replace(/([{,]\s*)([a-zA-Z0-9_]+)\s*:/g, '$1"$2":');
+          const parsed = JSON.parse(normalizedJson);
+          if (!parsed.apiKey || !parsed.projectId) {
+            showToast('設定コードに apiKey や projectId が見つかりません');
+            return;
+          }
+          localStorage.setItem('workflow_firebase_config', JSON.stringify(parsed));
+        } catch (e) {
+          showToast('設定コードの形式を確認してください');
+          return;
+        }
+      }
+
+      localStorage.setItem('workflow_sync_room_id', roomId);
+      closeModal();
+      showToast('同期設定を保存しました！再読み込みします...');
+      setTimeout(() => location.reload(), 800);
+    }
+
+    function disableSyncSettings() {
+      localStorage.removeItem('workflow_sync_room_id');
+      closeModal();
+      showToast('クラウド同期を解除しました');
+      setTimeout(() => location.reload(), 600);
+    }
+
+    function copyBackupData() {
+      const str = JSON.stringify(appState);
+      const textarea = document.createElement('textarea');
+      textarea.value = str;
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        document.execCommand('copy');
+        showToast('バックアップデータをコピーしました');
+      } catch (e) {
+        showToast('コピーに失敗しました');
+      }
+      document.body.removeChild(textarea);
+    }
+
+    function showImportArea() {
+      document.getElementById('import-area').classList.remove('hidden');
+    }
+
+    function executeImportData() {
+      try {
+        const raw = document.getElementById('import-json-input').value.trim();
+        const parsed = JSON.parse(raw);
+        if (parsed && Array.isArray(parsed.spotTasks)) {
+          appState = parsed;
+          saveState();
+          closeModal();
+          renderCurrentView();
+          showToast('データを復元しました');
+        } else {
+          showToast('データ形式が正しくありません');
+        }
+      } catch (e) {
+        showToast('データの読み込みに失敗しました');
+      }
+    }
+
+    function resetToSampleData() {
+      appState = getInitialSampleData();
+      saveState();
+      closeModal();
+      renderCurrentView();
+      showToast('初期サンプルデータに戻しました');
+    }
+
+    // ==========================================
+    // タブ切り替え & ヘッダー更新
     // ==========================================
     function switchTab(tabName) {
       currentTab = tabName;
@@ -1351,84 +1674,6 @@
       });
       saveState();
       showToast('変動タスクに追加しました！');
-    }
-
-    // ==========================================
-    // データ管理モーダル（バックアップ・初期化）
-    // ==========================================
-    function openDataModal() {
-      openModal(`
-        <div class="space-y-4">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <i data-lucide="database" class="w-4 h-4 text-sky-400"></i>
-              <h3 class="text-base font-bold text-slate-100">データ管理・バックアップ</h3>
-            </div>
-            <button onclick="closeModal()" class="text-slate-400 hover:text-slate-200 p-1"><i data-lucide="x" class="w-4 h-4"></i></button>
-          </div>
-          <p class="text-xs text-slate-400 leading-relaxed">
-            すべてのデータはブラウザ内に自動保存されています。別端末へ移行する場合は以下のバックアップ文字列をコピーしてください。
-          </p>
-          <div class="space-y-2">
-            <button onclick="copyBackupData()" class="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-2 transition">
-              <i data-lucide="copy" class="w-3.5 h-3.5 text-sky-400"></i>
-              <span>バックアップ文字をコピー</span>
-            </button>
-            <button onclick="showImportArea()" class="w-full py-2.5 px-3 rounded-xl text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center justify-center gap-2 transition">
-              <i data-lucide="download" class="w-3.5 h-3.5 text-emerald-400"></i>
-              <span>バックアップ文字から復元</span>
-            </button>
-          </div>
-          <div id="import-area" class="hidden space-y-2 pt-2 border-t border-slate-800">
-            <textarea id="import-json-input" rows="3" placeholder="コピーしたデータをここに貼り付け..." class="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-sky-400"></textarea>
-            <button onclick="executeImportData()" class="w-full py-2 rounded-xl text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300">データを上書き復元する</button>
-          </div>
-          <div class="pt-2 border-t border-slate-800">
-            <button onclick="resetToSampleData()" class="w-full py-2 px-3 rounded-xl text-xs font-medium text-rose-400 hover:bg-rose-500/10 transition">
-              初期サンプルデータに戻す
-            </button>
-          </div>
-        </div>
-      `);
-    }
-
-    function copyBackupData() {
-      const str = JSON.stringify(appState);
-      navigator.clipboard.writeText(str).then(() => {
-        showToast('バックアップデータをコピーしました');
-      }).catch(() => {
-        showToast('コピーに失敗しました');
-      });
-    }
-
-    function showImportArea() {
-      document.getElementById('import-area').classList.remove('hidden');
-    }
-
-    function executeImportData() {
-      try {
-        const raw = document.getElementById('import-json-input').value.trim();
-        const parsed = JSON.parse(raw);
-        if (parsed && Array.isArray(parsed.spotTasks)) {
-          appState = parsed;
-          saveState();
-          closeModal();
-          renderCurrentView();
-          showToast('データを復元しました');
-        } else {
-          showToast('データ形式が正しくありません');
-        }
-      } catch (e) {
-        showToast('データの読み込みに失敗しました');
-      }
-    }
-
-    function resetToSampleData() {
-      appState = getInitialSampleData();
-      saveState();
-      closeModal();
-      renderCurrentView();
-      showToast('初期サンプルデータに戻しました');
     }
 
     // 初期化実行
